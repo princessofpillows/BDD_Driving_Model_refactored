@@ -20,8 +20,12 @@ def add_argument_group(name):
 train_arg = add_argument_group("Training")
 
 train_arg.add_argument("--data_dir", type=str,
-                       default="/home/jpatts/Desktop/BDD_Driving_Model_refactored/data/",
+                       default="C:/Users/AUSTIN/Developer/BDD_Driving_Model_refactored/data/",
                        help="Directory with train/test/val data")
+
+train_arg.add_argument("--package_data", type=bool,
+                       default=False,
+                       help="Package data into H5 Format.")
 
 train_arg.add_argument("--learning_rate", type=float,
                        default=1e-3,
