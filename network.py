@@ -34,7 +34,7 @@ class Network:
         
         # Create Placeholders for inputs
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp)
-        self.y_in = tf.placeholder(tf.int64, shape=(None, ))
+        self.y_in = tf.placeholder(tf.int8, shape=x_in_shp)
         
     def _build_preprocessing(self):
         """Build preprocessing related graph."""
@@ -98,7 +98,8 @@ class Network:
             self.best_va_acc = tf.get_variable(
                 "best_va_acc", shape=(), trainable=False)
             # TODO: Assign op to store this value to TF variable
-            self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)     
+            self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)  
+            
     def _build_model(self):
         """Build our MLP network."""
 
@@ -340,8 +341,9 @@ class Network:
             # Create cross entropy loss
             self.loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=self.y_in, logits=self.logits)
-            )
+                    labels=tf.reshape(self.y_in, [-1, self.config.num_class]),
+                    logits=tf.reshape(self.logits,  [-1, self.config.num_class])
+            ))
 
             # Create l2 regularizer loss and add
             l2_loss = tf.add_n([
@@ -380,11 +382,30 @@ def main(config):
         data.append(f[group])
     
     d = data[0]
-    net = Network(d['video'].shape, config)
+    nrows = len(data)
+    x_tr = data[:nrows//2]
+    x_va = data[nrows//2:]
     
-    
-    net.train()
+    x = []
+    y = []
+    for row in data:    
+        x.append(row['frame-10s'][:])
+       # y.append(row['class_colour'][:])
+        y.append(row['instance_id'][:])
 
+    
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    x_tr = x[:nrows//2]
+    x_va = x[nrows//2:]
+    
+    y_tr = y[:nrows//2]
+    y_tr = y[nrows//2:]
+    
+    net = Network(x_tr.shape, config)
+    net.train(x_tr, x_tr, x_va, x_tr)
+    
 
 #
 #def loss(inp, out, n_c):

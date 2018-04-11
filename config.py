@@ -76,7 +76,7 @@ model_arg.add_argument("--num_hidden", type=int,
                        help="Number of hidden layers")
 
 model_arg.add_argument("--num_class", type=int,
-                       default=10,
+                       default=2,
                        help="Number of classes in the dataset")
 
 model_arg.add_argument("--activ_type", type=str,

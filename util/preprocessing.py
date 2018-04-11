@@ -109,14 +109,14 @@ def package_data(data_dir):
             group = h5f.create_group(name)
 
         # write datasets to video group
-        group.create_dataset('video', data=video_data, dtype='uint8')
+        #group.create_dataset('video', data=video_data, dtype='float16')
         group.create_dataset('info', data=info_data)
-        group.create_dataset('frame-10s', data=frame_data, dtype='uint8')
-        group.create_dataset('class_colour', data=class_colour_data, dtype='uint8')
-        group.create_dataset('class_id', data=class_id_data, dtype='uint8')
-        group.create_dataset('instance_colour', data=instance_colour_data, dtype='uint8')
-        group.create_dataset('instance_id', data=instance_id_data, dtype='uint8')
-        group.create_dataset('raw_images', data=raw_images_data, dtype='uint8')
+        group.create_dataset('frame-10s', data=frame_data, dtype='float16')
+        group.create_dataset('class_colour', data=class_colour_data, dtype='int8')
+        group.create_dataset('class_id', data=class_id_data, dtype='int8')
+        group.create_dataset('instance_colour', data=instance_colour_data, dtype='int8')
+        group.create_dataset('instance_id', data=instance_id_data, dtype='int8')
+        #group.create_dataset('raw_images', data=raw_images_data, dtype='float16')
 
     # close file
     h5f.close()
