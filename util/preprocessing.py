@@ -92,12 +92,12 @@ def package_data(data_dir):
         instance_id_data = cv2.imread(instance_id[i], 1)
         raw_images_data = cv2.imread(raw_images[i], 1)
         # resize images
-        frame_data = resize(frame_data, (640, 360, 3))
-        class_colour_data = resize(class_colour_data, (640, 360, 3))
-        class_id_data = resize(class_id_data, (640, 360, 3))
-        instance_colour_data = resize(instance_colour_data, (640, 360, 3))
-        instance_id_data = resize(instance_id_data, (640, 360, 3))
-        raw_images_data = resize(raw_images_data, (640, 360, 3))
+        frame_data = _resize(frame_data)
+        class_colour_data = _resize(class_colour_data)
+        class_id_data = _resize(class_id_data)
+        instance_colour_data = _resize(instance_colour_data)
+        instance_id_data = _resize(instance_id_data)
+        raw_images_data = _resize(raw_images_data)
 
         # write group for videoname
         try:
@@ -111,7 +111,7 @@ def package_data(data_dir):
         # write datasets to video group
         #group.create_dataset('video', data=video_data, dtype='float16')
         group.create_dataset('info', data=info_data)
-        group.create_dataset('frame-10s', data=frame_data, dtype='float16')
+        group.create_dataset('frame-10s', data=frame_data, dtype='int8')
         group.create_dataset('class_colour', data=class_colour_data, dtype='int8')
         group.create_dataset('class_id', data=class_id_data, dtype='int8')
         group.create_dataset('instance_colour', data=instance_colour_data, dtype='int8')
@@ -120,3 +120,12 @@ def package_data(data_dir):
 
     # close file
     h5f.close()
+
+
+def _resize(image, dims=(640, 360, 3)):
+    """Wrapper for resize to avoid having pixels between [0, 1]"""
+    resized = resize(image, dims) # Downscale, NOTE puts float32 between [0, 1]
+    resized = 255 * resized # Put back in [0, 255]
+    final_image = resized.astype(np.uint8) # adjust type back to normal
+    return final_image   
+    
