@@ -34,7 +34,7 @@ class Network:
         
         # Create Placeholders for inputs
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp)
-        self.y_in = tf.placeholder(tf.int8, shape=x_in_shp)
+        self.y_in = tf.placeholder(tf.int64, shape=x_in_shp)
         
     def _build_preprocessing(self):
         """Build preprocessing related graph."""
@@ -83,7 +83,13 @@ class Network:
             # Compute the accuracy of the model. When comparing labels
             # elemwise, use tf.equal instead of `==`. `==` will evaluate if
             # your Ops are identical Ops.
-            self.pred = tf.argmax(self.logits, axis=1)
+            
+            
+            ## Fix class -> pixels
+            class2lab = {0: [0 ,0, 0],
+                         1: [0, 0, 142]}
+
+            self.pred = tf.argmax(self.logits, axis=3)
             self.acc = tf.reduce_mean(
                 tf.to_float(tf.equal(self.pred, self.y_in))
             )
@@ -123,67 +129,55 @@ class Network:
             num_unit = self.config.num_unit
 
             cur_in = tf.layers.conv2d(inputs=cur_in,
-                                      filters=self.config.num_conv_base,
-                                      kernel_size=5,
+                                      filters=64,
+                                      kernel_size=[11, 11],
                                       kernel_initializer=kernel_initializer,
-                                      padding='valid',
-                                      activation=activ)
-            # use `tf.layers.max_pooling2d` to see how it should run. If
-            # you want to try different pooling strategies, add it as another
-            # config option. Be sure to have the max_pooling implemented.
-            cur_in = tf.layers.max_pooling2d(inputs=cur_in,
-                                             pool_size=[2, 2],
-                                             strides=2)
-
-            # double the number of filters we will use after pooling
-            conv_filters = 2 * self.config.num_conv_base
-            # TODO: Convolutional layer 1. Make output shape become 14 > 12 > 6
-            # as we do convolution and pooling. Have `num_unit` of filters,
-            # use the kernel_initializer above.
-            cur_in = tf.layers.conv2d(inputs=cur_in,
-                          filters=conv_filters,
-                          kernel_size=3,
-                          kernel_initializer=kernel_initializer,
-                          activation=activ)
-
-
-            # max pooling
-            cur_in = tf.layers.max_pooling2d(inputs=cur_in,
-                                             pool_size=[2, 2],
-                                             strides=2)
-
-            # double the number of filters we will use after pooling
-            conv_filters = 2 * conv_filters
-            # Convolutional layer 2. Make output shape become 6 > 4 > 2
-            # as we do convolution and pooling. Have `num_unit` of filters,
-            # use the kernel_initializer above.
-            cur_in = tf.layers.conv2d(inputs=cur_in,
-                          filters=conv_filters,
-                          kernel_size=3,
-                          kernel_initializer=kernel_initializer,
-                          activation=activ)
-
-            # max pooling
-            cur_in = tf.layers.max_pooling2d(inputs=cur_in,
-                                             pool_size=[2, 2],
-                                             strides=2)
+                                      padding='VALID',
+                                      activation=tf.nn.relu)
             
-            # Flatten to put into FC layer with `tf.layers.flatten`
-            cur_in = tf.layers.flatten(cur_in)
-            # Hidden layers
-            num_unit = self.config.num_unit
-            for _i in range(self.config.num_hidden):
-                cur_in = tf.layers.dense(
-                    cur_in, num_unit, kernel_initializer=kernel_initializer)
-                if self.config.activ_type == "relu":
-                    cur_in = tf.nn.relu(cur_in)
-                elif self.config.activ_type == "tanh":
-                    cur_in = tf.nn.tanh(cur_in)
-            # Output layer
-            self.logits = tf.layers.dense(
-                cur_in, self.config.num_class,
-                kernel_initializer=kernel_initializer)
+            
+            cur_in = tf.contrib.layers.max_pool2d(cur_in,
+                                                [3, 3], 2         
+            )
+            
+            cur_in = tf.layers.conv2d(cur_in, 192, [5, 5],
+             activation=tf.nn.relu)
+           
+            cur_in = tf.contrib.layers.max_pool2d(cur_in,
+                                                  [3, 3], 2)            
+            
+            cur_in = tf.layers.conv2d(cur_in, 384, [3, 3],
+                                         activation=tf.nn.relu)
+            cur_in = tf.layers.conv2d(cur_in, 384, [3, 3],
+                                    activation=tf.nn.relu)
+            cur_in = tf.layers.conv2d(cur_in, 256, [3, 3],
+                                    activation=tf.nn.relu)
+            cur_in = tf.contrib.layers.max_pool2d(cur_in,
+                                                  [3, 3], 2)            
+            
+            
+            cur_in = tf.layers.conv2d(cur_in, 4096, [5, 5],
+                                   activation=tf.nn.relu)
+            cur_in = tf.contrib.layers.dropout(cur_in,
+                                        0.3, is_training=True)
+            cur_in = tf.layers.conv2d(cur_in, 4096, [1, 1],
+                                   activation=tf.nn.relu)
+            cur_in = tf.contrib.layers.dropout(cur_in,
+                                        0.3, is_training=True)
 
+            cur_in = tf.layers.conv2d(cur_in, self.config.num_class, [1, 1],
+                                   activation=None,
+                                   bias_initializer=None)
+            
+            
+#            self.logits = tf.layers.conv2d_transpose(cur_in)
+            self.logits = tf.image.resize_images(
+                images=cur_in,
+                size=[640, 360],
+                method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
+            )
+            
+            print()
             # Get list of all weights in this scope. They are called "kernel"
             # in tf.layers.dense.
             self.kernels_list = [
@@ -340,11 +334,14 @@ class Network:
 
             # Create cross entropy loss
             self.loss = tf.reduce_mean(
-                tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=tf.reshape(self.y_in, [-1, self.config.num_class]),
-                    logits=tf.reshape(self.logits,  [-1, self.config.num_class])
+                tf.nn.softmax_cross_entropy_with_logits(
+#                    labels=tf.reshape(self.y_in, [-1, self.config.num_class]),
+#                    logits=tf.reshape(self.logits,  [-1, self.config.num_class])
+                    labels=self.y_in,
+                    logits=tf.reshape(self.logits, [-1,  640, 360, 1]),
             ))
-
+            print(self.logits.shape)
+            print(self.y_in.shape)
             # Create l2 regularizer loss and add
             l2_loss = tf.add_n([
                 tf.reduce_sum(_v**2) for _v in self.kernels_list])

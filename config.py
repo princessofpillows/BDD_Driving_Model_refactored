@@ -32,7 +32,7 @@ train_arg.add_argument("--learning_rate", type=float,
                        help="Learning rate (gradient step size)")
 
 train_arg.add_argument("--batch_size", type=int,
-                       default=10,
+                       default=1,
                        help="Size of each training batch")
 
 train_arg.add_argument("--max_iter", type=int,
