@@ -35,6 +35,7 @@ class Network:
         # Create Placeholders for inputs
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp)
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp)
+        self.y_lab = tf.placeholder(tf.int64, shape=x_in_shp[:-1])
         
     def _build_preprocessing(self):
         """Build preprocessing related graph."""
@@ -87,11 +88,13 @@ class Network:
             
             ## Fix class -> pixels
             class2lab = {0: [0 ,0, 0],
-                         1: [0, 0, 142]}
+                         1: [136, 136, 136]}
+            
 
             self.pred = tf.argmax(self.logits, axis=3)
+            #fixed_pred = tf.reshape(tf.map_fn(lambda x: table.lookup(x), self.pred), (-1, 640, 360, 3))
             self.acc = tf.reduce_mean(
-                tf.to_float(tf.equal(self.pred, self.y_in))
+                tf.to_float(tf.equal(self.pred, self.y_lab))
             )
 
             # Record summary for accuracy
@@ -169,7 +172,7 @@ class Network:
                                    activation=None,
                                    bias_initializer=None)
             
-            
+            print(cur_in.shape)
 #            self.logits = tf.layers.conv2d_transpose(cur_in)
             self.logits = tf.image.resize_images(
                 images=cur_in,
@@ -177,13 +180,13 @@ class Network:
                 method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
             )
             
-            print()
+            print(self.logits.shape)
             # Get list of all weights in this scope. They are called "kernel"
             # in tf.layers.dense.
             self.kernels_list = [
                 _v for _v in tf.trainable_variables() if "kernel" in _v.name]    
 
-    def train(self, x_tr, y_tr, x_va, y_va):
+    def train(self, x_tr, y_tr, x_va, y_va, y_lab):
         """Training function.
 
         Parameters
@@ -245,7 +248,7 @@ class Network:
                     len(x_tr), batch_size, replace=False)
                 x_b = np.array([x_tr[_i] for _i in ind_cur])
                 y_b = np.array([y_tr[_i] for _i in ind_cur])
-
+                y_lab_b = np.array([y_lab[_i] for _i in ind_cur])
                 # TODO: Write summary every N iterations as well as the first
                 # iteration. Use `self.config.report_freq`. Make sure that we
                 # write at the first iteration, and every kN iterations where k
@@ -269,6 +272,7 @@ class Network:
                     feed_dict={
                         self.x_in: x_b,
                         self.y_in: y_b,
+                        self.y_lab: y_lab_b,
                     },
                 )
 
@@ -295,32 +299,32 @@ class Network:
                 # iteration. Use `self.config.val_freq`. Make sure that we
                 # validate at the correct iterations. HINT: should be similar
                 # to above.
-                b_validate = (step % self.config.report_freq) == 0
-                if b_validate:
-                    res = sess.run(
-                        fetches={
-                            "acc": self.acc,
-                            "summary": self.summary_op,
-                            "global_step": self.global_step,
-                        },
-                        feed_dict={
-                            self.x_in: x_va,
-                            self.y_in: y_va
-                        })
-#                    # Write Validation Summary
-#                    self.summary_va.add_summary(
-#                        res["summary"], global_step=res["global_step"],
-#                    )
-                    self.summary_va.flush()
+#                b_validate = (step % self.config.report_freq) == 0
+#                if b_validate:
+#                    res = sess.run(
+#                        fetches={
+#                            "acc": self.acc,
+#                            "summary": self.summary_op,
+#                            "global_step": self.global_step,
+#                        },
+#                        feed_dict={
+#                            self.x_in: x_va,
+#                            self.y_in: y_va
+#                        })
+##                    # Write Validation Summary
+##                    self.summary_va.add_summary(
+##                        res["summary"], global_step=res["global_step"],
+##                    )
+#                    self.summary_va.flush()
 
                     # If best validation accuracy, update W_best, b_best, and
                     # best accuracy. We will only return the best W and b
-                    if res["acc"] > best_acc:
-                        best_acc = res["acc"]
-                        # TODO: Write best acc to TF variable
-                        sess.run(self.acc_assign_op, feed_dict={
-                            self.best_va_acc_in: best_acc
-                        })
+#                    if res["acc"] > best_acc:
+#                        best_acc = res["acc"]
+#                        # TODO: Write best acc to TF variable
+#                        sess.run(self.acc_assign_op, feed_dict={
+#                            self.best_va_acc_in: best_acc
+#                        })
 
                         # Save the best model
 #                        self.saver_best.save(
@@ -334,11 +338,9 @@ class Network:
 
             # Create cross entropy loss
             self.loss = tf.reduce_mean(
-                tf.nn.softmax_cross_entropy_with_logits(
-#                    labels=tf.reshape(self.y_in, [-1, self.config.num_class]),
-#                    logits=tf.reshape(self.logits,  [-1, self.config.num_class])
-                    labels=self.y_in,
-                    logits=tf.reshape(self.logits, [-1,  640, 360, 1]),
+                tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=self.y_lab,
+                    logits=self.logits,
             ))
             print(self.logits.shape)
             print(self.y_in.shape)
@@ -398,10 +400,18 @@ def main(config):
     x_va = x[nrows//2:]
     
     y_tr = y[:nrows//2]
-    y_tr = y[nrows//2:]
+    y_va = y[nrows//2:]
+    
+    # TODO: load from csv
+    class2lab = {(0 ,0, 0): 0,
+                 (136, 136, 136): 1,
+                 (67, 67, 67): 0}
+    
+    l = lambda x: class2lab[tuple(x)] if tuple(x) in class2lab else 0
+    y_tr_labels = np.apply_along_axis(l, -1, y_tr)
     
     net = Network(x_tr.shape, config)
-    net.train(x_tr, x_tr, x_va, x_tr)
+    net.train(x_tr, x_tr, x_va, x_tr, y_tr_labels)
     
 
 #

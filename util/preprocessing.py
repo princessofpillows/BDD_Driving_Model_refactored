@@ -124,8 +124,6 @@ def package_data(data_dir):
 
 def _resize(image, dims=(640, 360, 3)):
     """Wrapper for resize to avoid having pixels between [0, 1]"""
-    resized = resize(image, dims) # Downscale, NOTE puts float32 between [0, 1]
-    resized = 255 * resized # Put back in [0, 255]
-    final_image = resized.astype(np.uint8) # adjust type back to normal
-    return final_image   
+    resized = resize(image, dims, preserve_range=True) # Downscale, NOTE puts float32 between [0, 1]
+    return resized   
     
