@@ -339,26 +339,26 @@ class Network:
                 V = self.config.val_freq
                 b_validate = step % V == 0 and step!=0 or step == 1
                 if b_validate:
-                   res = sess.run(
-                       fetches={
+                    res = sess.run(
+                        fetches={
                            "acc": self.acc,
                            "summary": self.summary_op,
                            "global_step": self.global_step,
-                       },
-                       feed_dict={
+                        },
+                        feed_dict={
                            self.x_in: x_va,
                            self.y_in: y_va,
                            self.y_lab: y_lab_b,
-                       })
-#                    # Write Validation Summary
-                   self.summary_va.add_summary(
+                        })
+                    # Write Validation Summary
+                    self.summary_va.add_summary(
                        res["summary"], global_step=res["global_step"],
-                   )
-                   self.summary_va.flush()
+                    )
+                    self.summary_va.flush()
 
                     # If best validation accuracy, update W_best, b_best, and
                     # best accuracy. We will only return the best W and b
-                   if res["acc"] > best_acc:
+                    if res["acc"] > best_acc:
                        best_acc = res["acc"]
                        # Write best acc to TF variable
                        sess.run(self.acc_assign_op, feed_dict={
@@ -370,7 +370,7 @@ class Network:
                            sess, self.save_file_best,
                            write_meta_graph=False,
                        )
-                       
+
     def test(self, x_te, y_te, y_lab_b):
         """Test function"""
         with tf.Session() as sess:
