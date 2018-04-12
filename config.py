@@ -20,8 +20,12 @@ def add_argument_group(name):
 train_arg = add_argument_group("Training")
 
 train_arg.add_argument("--data_dir", type=str,
-                       default="C:/Users/AUSTIN/Developer/BDD_Driving_Model_refactored/data/",
+                       default="/Users/ahendy/Developer/BDD_Driving_Model_refactored/data",
                        help="Directory with train/test/val data")
+
+train_arg.add_argument("--weights_dir", type=str,
+                       default="/Users/dariasova/projects/BDD_data/weights/bvlc_alexnet.npy",
+                       help="Directory with bvlc_alexnet.npy weights data. Specify file name.")
 
 train_arg.add_argument("--package_data", type=bool,
                        default=False,

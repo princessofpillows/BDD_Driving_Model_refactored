@@ -6,6 +6,7 @@ from tqdm import trange
 
 from config import get_config, print_usage
 from util.preprocessing import package_data
+import IPython
 
 
 class Network:
@@ -20,11 +21,36 @@ class Network:
         self._build_placeholder()
         self._build_preprocessing()
         self._build_model()
+        self._load_initial_weights()
         self._build_loss()
         self._build_optim()
         self._build_eval()
         self._build_summary()
         self._build_writer()
+
+    def _build_writer(self):
+        """Build writers and savers for the model"""
+
+        # Create summary writers (one for train, one for validation)
+        self.summary_tr = tf.summary.FileWriter(
+            os.path.join(self.config.log_dir, "train"))
+        self.summary_va = tf.summary.FileWriter(
+            os.path.join(self.config.log_dir, "valid"))
+        # Create savers (one for current, one for best)
+        self.saver_cur = tf.train.Saver()
+        self.saver_best = tf.train.Saver()
+        # Save file for the current model
+        self.save_file_cur = os.path.join(
+            self.config.log_dir, "model")
+        # Save file for the best model
+        self.save_file_best = os.path.join(
+            self.config.save_dir, "model")
+
+    def _build_summary(self):
+        """Build summary operations"""
+
+        # Merge all the summary op
+        self.summary_op = tf.summary.merge_all()
 
     def _build_placeholder(self):
         """Build placeholders."""
@@ -75,7 +101,7 @@ class Network:
                 learning_rate=self.config.learning_rate)
             self.optim = optimizer.minimize(
                 self.loss, global_step=self.global_step)
-            
+
     def _build_eval(self):
         """Build the evaluation related ops"""
 
@@ -83,8 +109,8 @@ class Network:
 
             # Compute the accuracy of the model. When comparing labels
             # elemwise, use tf.equal instead of `==`. `==` will evaluate if
-            # your Ops are identical Ops.#            
-            
+            # your Ops are identical Ops.#
+
             self.pred = tf.image.resize_images(
                 images=self.logits,
                 size=[244, 244],
@@ -104,9 +130,96 @@ class Network:
             self.best_va_acc_in = tf.placeholder(tf.float32, shape=())
             self.best_va_acc = tf.get_variable(
                 "best_va_acc", shape=(), trainable=False)
-            # TODO: Assign op to store this value to TF variable
-            self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)  
-            
+            #Assign op to store this value to TF variable
+            self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)
+
+    def _load_initial_weights(self):
+        """Load weights from a file into network.
+        Weights taken from http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
+        It is a dict of lists """
+
+        print("Loading pretrained weights for Alexnet...")
+        # load weights from the file
+        weights_dict = np.load(self.config.weights_dir, encoding='bytes').item()
+        # IPython.embed()
+
+        # Loop over all layer names stored in the weights dict
+        #dict_keys(['fc6', 'fc7', 'fc8', 'conv3', 'conv2', 'conv1', 'conv5', 'conv4'])
+        for op_name in weights_dict:
+
+            # can define skips layer that will be trained fromscratch like this:
+            # if op_name not in self.SKIP_LAYER:
+            with tf.variable_scope("Network", reuse=tf.AUTO_REUSE):
+
+                with tf.variable_scope(op_name, reuse=True):
+
+                    # Assign weights/biases to their corresponding tf variable
+                    for data in weights_dict[op_name]:
+                        with tf.Session() as sess:
+
+                            # IPython.embed()
+                            # Biases
+                            if len(data.shape) == 1:
+                                var = tf.get_variable('biases', trainable=False)
+                                sess.run(var.assign(data))
+
+                            # Weights
+                            else:
+                                var = tf.get_variable('weights', trainable=False)
+                                sess.run(var.assign(data))
+        print("Weights loaded.")
+
+###################
+###
+###    AlexNext implementation based on: https://github.com/kratzert/finetune_alexnet_with_tensorflow/blob/master/alexnet.py
+###
+
+    def alexNet(self):
+        print("Building Alexnet into the network...")
+        # Normalize using the above training-time statistics
+        cur_in = (self.x_in - self.n_mean) / self.n_range
+
+        # 1st Layer Conv1
+        cur_in = convl(cur_in, 11, 11, 96, 4, 4, padding='VALID', name='conv1')
+        cur_in = tf.contrib.layers.max_pool2d(cur_in,
+                                            [3, 3], 2, padding='VALID')
+
+        # 2nd Layer Conv2
+        cur_in = convl(cur_in, 5, 5, 256, 1, 1, groups=2, name='conv2')
+        cur_in = tf.contrib.layers.max_pool2d(cur_in,
+                                              [3, 3], 2, padding='VALID')
+        # 3rd Layer Conv3
+        cur_in = convl(cur_in, 3, 3, 384, 1, 1, name='conv3')
+
+        # 4th Layer Conv4
+        cur_in = convl(cur_in, 3, 3, 384, 1, 1, groups=2, name='conv4')
+
+        # 5th Layer Conv5
+        cur_in = convl(cur_in, 3, 3, 256, 1, 1, groups=2, name='conv5')
+
+        cur_in = tf.contrib.layers.max_pool2d(cur_in,
+                                              [3, 3], 2, padding='VALID')
+        # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
+        flattened = tf.reshape(cur_in, [-1, 6*6*256])
+        cur_in = fcl(flattened, 6*6*256, 4096, name='fc6')
+        # dropout6 = dropout(fc6, self.KEEP_PROB)
+        cur_in = tf.contrib.layers.dropout(cur_in,
+                                    0.3, is_training=True)
+
+        # 7th Layer: FC (w ReLu) -> Dropout
+        cur_in = fcl(cur_in, 4096, 4096, name='fc7')
+        # dropout7 = dropout(fc7, self.KEEP_PROB)
+        cur_in = tf.contrib.layers.dropout(cur_in,
+                                    0.3, is_training=True)
+
+        # 8th Layer: FC and return unscaled activations
+        # cur_in = fcl(cur_in, 4096, self.config.num_class, name='fc8')
+        cur_in = fcl(cur_in, 4096, 1000, name='fc8')
+
+        print("AlexNet Done.")
+        return cur_in
+
+
     def _build_model(self):
         """Build our MLP network."""
 
@@ -122,83 +235,20 @@ class Network:
         with tf.variable_scope("Network", reuse=tf.AUTO_REUSE):
             # Normalize using the above training-time statistics
             cur_in = (self.x_in - self.n_mean) / self.n_range
+            # num_unit = self.config.num_unit
 
-            num_unit = self.config.num_unit
-
-            print("Input shape" , cur_in.shape)
-            cur_in = tf.layers.conv2d(inputs=cur_in,
-                                      filters=96,
-                                      kernel_size=[11, 11],
-                                      strides=[4, 4],
-                                      kernel_initializer=kernel_initializer,
-                                      padding='VALID',
-                                      activation=tf.nn.relu)
-            
-            print("Layer1" , cur_in.shape)
-            cur_in = tf.contrib.layers.max_pool2d(cur_in,
-                                                [3, 3], 2         
-            )
-            print("Layer2" , cur_in.shape)
-
-            cur_in = tf.layers.conv2d(cur_in, 256, [5, 5],
-             activation=tf.nn.relu)
-            print("Layer3" , cur_in.shape)
-
-#            cur_in = tf.contrib.layers.max_pool2d(cur_in,
-#                                                  [3, 3], 2)            
-            print("Layer4" , cur_in.shape)
-
-            cur_in = tf.layers.conv2d(cur_in, 384, [3, 3],
-                                         activation=tf.nn.relu)
-            print("Layer5" , cur_in.shape)
-
-            cur_in = tf.layers.conv2d(cur_in, 384, [3, 3],
-                                    activation=tf.nn.relu)
-            print("Layer6" , cur_in.shape)
-
-            cur_in = tf.layers.conv2d(cur_in, 256, [3, 3],
-                                    activation=tf.nn.relu)
-            print("Layer7" , cur_in.shape)
-
-#            cur_in = tf.contrib.layers.max_pool2d(cur_in,
-#                                                  [3, 3], 2)            
-            
-            print("Layer8" , cur_in.shape)
-
-            cur_in = tf.layers.conv2d(cur_in, 4096, [5, 5],
-                                   activation=tf.nn.relu)
-            print("Layer9" , cur_in.shape)
-
-            cur_in = tf.contrib.layers.dropout(cur_in,
-                                        0.3, is_training=True)
-            print("Layer10" , cur_in.shape)
-
-            cur_in = tf.layers.conv2d(cur_in, 4096, [1, 1],
-                                   activation=tf.nn.relu)
-            print("Layer11" , cur_in.shape)
-
-            cur_in = tf.contrib.layers.dropout(cur_in,
-                                        0.3, is_training=True)
-            print("Layer12" , cur_in.shape)
-
+            cur_in = self.alexNet()
+            print("Shape After alexnet..")
+            print(cur_in.shape)
             self.logits = tf.contrib.layers.conv2d(cur_in, self.config.num_class, [1, 1],
                                    activation_fn=None,
                                    padding="VALID",
                                    biases_initializer=None)
-            
-            print("Logits last layer shape", self.logits.shape)
-            
+
             yshps = [x.value for x in self.y_in.get_shape()]
 #            self.logits = tf.image.resize_nearest_neighbor(self.logits,
 #                                                   [640,
 #                                                    360])
-            print("Logits Final layer shape", self.logits.shape)
-            
-#            self.logits = upsample(self.logits, config.num_class, 32, "testa")
-#            N, H, W, C = cur_in.shape
-#            upsample_shape = tf.pack([N, 640, 360, C]) 
-#            self.logits =        
-##                self.logits = tf.layers.conv2d_transpose(cur_in)
             self.logits = tf.image.resize_images(
                 images=self.logits,
 #                size=[self.batch_size, 640*360],
@@ -206,12 +256,11 @@ class Network:
 
                 method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
             )
-#            
-            print("Logits shape: ", self.logits.shape)
-            # Get list of all weights in this scope. They are called "kernel"
-            # in tf.layers.dense.
-            self.kernels_list = [
-                _v for _v in tf.trainable_variables() if "kernel" in _v.name]    
+
+            # # Get list of all weights in this scope. They are called "kernel"
+            # # in tf.layers.dense.
+            # self.kernels_list = [
+            #     _v for _v in tf.trainable_variables() if "kernel" in _v.name]
 
     def train(self, x_tr, y_tr, x_va, y_va, y_lab):
         """Training function.
@@ -258,9 +307,28 @@ class Network:
                 self.n_range_in: x_tr_range,
             })
 
-     
-            step = 0
-            best_acc = 0
+            # Check if previous train exists
+            b_resume = tf.train.latest_checkpoint(self.config.log_dir)
+
+            if b_resume:
+                # Restore network from log_dir for curr model
+                print("Restoring from {}...".format(
+                    self.config.log_dir))
+
+                self.saver_cur.restore(
+                    sess,
+                    b_resume
+                )
+
+                # Restore number of steps so far
+                step = self.global_step.eval()
+                # Restore best acc
+                best_acc = self.best_va_acc.eval()
+
+            else:
+                print("Starting from scratch...")
+                step = 0
+                best_acc = 0
 
             print("Training...")
             batch_size = config.batch_size
@@ -272,28 +340,29 @@ class Network:
                 # forget about the `epoch` thing. Theoretically, they should do
                 # almost the same.
                 ind_cur = np.random.choice(
-                    len(x_tr), batch_size, replace=False)
+                    len(x_tr), batch_size, replace=True)
                 x_b = np.array([x_tr[_i] for _i in ind_cur])
                 y_b = np.array([y_tr[_i] for _i in ind_cur])
                 y_lab_b = np.array([y_lab[_i] for _i in ind_cur])
-                # TODO: Write summary every N iterations as well as the first
-                # iteration. Use `self.config.report_freq`. Make sure that we
-                # write at the first iteration, and every kN iterations where k
-                # is an interger. HINT: we write the summary after we do the
-                # optimization.
-#                b_write_summary = (step % self.config.report_freq) == 0
-#                if b_write_summary:
-#                    fetches = {
-#                        "optim": self.optim,
-#                        "summary": self.summary_op,
-#                        "global_step": self.global_step,
-#                    }
-#                else:
-                fetches = {
-                    "optim": self.optim,
-                }
 
-            
+                # Write summary every N iterations as well as the first
+                # iteration. Use `self.config.report_freq`.
+                K = self.config.report_freq
+                # records 0 % K or step=1
+                b_write_summary = step % K == 0 and step!=0 or step == 1
+                if b_write_summary:
+                    fetches = {
+                        "optim": self.optim,
+                        "summary": self.summary_op,
+                        "global_step": self.global_step,
+                    }
+                else:
+                    fetches = {
+                        "optim": self.optim,
+                    }
+
+
+
                 # Run the operations necessary for training
                 res = sess.run(
                     fetches=fetches,
@@ -304,64 +373,88 @@ class Network:
                     },
                 )
 
-                # Write Training Summary if we fetched it (don't write
-                # meta graph). See that we actually don't need the above
-                # `b_write_summary` actually :-). I know that we can check this
-                # with b_write_summary, but let's check `res` to do this as an
-                # exercise.
-#                if "summary" in res:
-#                    self.summary_tr.add_summary(
-#                        res["summary"], global_step=res["global_step"],
-#                    )
-#                    self.summary_tr.flush()
-#
-#                    # Also save current model to resume when we write the
-#                    # summary.
-#                    self.saver_cur.save(
-#                        sess, self.save_file_cur,
-#                        global_step=self.global_step,
-#                        write_meta_graph=False,
-#                    )
+               # Write Training Summary if we fetched it (no meta graph)
+                if "summary" in res:
+                   self.summary_tr.add_summary(
+                       res["summary"], global_step=res["global_step"],
+                   )
+                   self.summary_tr.flush()
 
-#                 Validate every N iterations and at the first
-#                 iteration. Use `self.config.val_freq`. Make sure that we
-#                 validate at the correct iterations. HINT: should be similar
-#                 to above.
-#                b_validate = (step % self.config.report_freq) == 0
-#                if b_validate:
-#                    res = sess.run(
-#                        fetches={
-#                            "acc": self.acc,
-#                            "summary": self.summary_op,
-#                            "global_step": self.global_step,
-#                        },
-#                        feed_dict={
-#                            self.x_in: x_va,
-#                            self.y_in: y_va,
-#                            self.y_lab: y_lab_b,
-#
-#                        })
-#                    print("Accuracy", res['acc'])
-##                    # Write Validation Summary
-#                    self.summary_va.add_summary(
-#                        res["summary"], global_step=res["global_step"],
-#                    )
-#                    self.summary_va.flush()
+                   # Also save current model to resume when we write the
+                   # summary.
+                   self.saver_cur.save(
+                       sess, self.save_file_cur,
+                       global_step=self.global_step,
+                       write_meta_graph=False,
+                   )
+
+                # Validate every N iterations and at the first iteration.
+                V = self.config.val_freq
+                b_validate = step % V == 0 and step!=0 or step == 1
+                if b_validate:
+                    res = sess.run(
+                        fetches={
+                           "acc": self.acc,
+                           "summary": self.summary_op,
+                           "global_step": self.global_step,
+                        },
+                        feed_dict={
+                           self.x_in: x_va,
+                           self.y_in: y_va,
+                           self.y_lab: y_lab_b,
+                        })
+                    # Write Validation Summary
+                    self.summary_va.add_summary(
+                       res["summary"], global_step=res["global_step"],
+                    )
+                    self.summary_va.flush()
 
                     # If best validation accuracy, update W_best, b_best, and
                     # best accuracy. We will only return the best W and b
-#                    if res["acc"] > best_acc:
-#                        best_acc = res["acc"]
-#                        # TODO: Write best acc to TF variable
-#                        sess.run(self.acc_assign_op, feed_dict={
-#                            self.best_va_acc_in: best_acc
-#                        })
+                    if res["acc"] > best_acc:
+                       best_acc = res["acc"]
+                       # Write best acc to TF variable
+                       sess.run(self.acc_assign_op, feed_dict={
+                           self.best_va_acc_in: best_acc
+                       })
 
-                        # Save the best model
-#                        self.saver_best.save(
-#                            sess, self.save_file_best,
-#                            write_meta_graph=False,
-#                        )
+                       # Save the best model
+                       self.saver_best.save(
+                           sess, self.save_file_best,
+                           write_meta_graph=False,
+                       )
+
+    def test(self, x_te, y_te, y_lab_b):
+        """Test function"""
+        with tf.Session() as sess:
+            # Load the best model
+            latest_checkpoint = tf.train.latest_checkpoint(self.config.save_dir)
+
+            if tf.train.latest_checkpoint(self.config.save_dir) is not None:
+                print("Restoring from {}...".format(
+                    self.config.save_dir))
+                self.saver_best.restore(
+                    sess,
+                    latest_checkpoint
+                )
+
+            # Test on the test data
+            res = sess.run(
+                fetches={
+                    "acc": self.acc,
+                },
+                feed_dict={
+                    self.x_in: x_te,
+                    self.y_in: y_te,
+                    self.y_lab: y_lab_b,
+                },
+            )
+
+            # Report (print) test result
+            print("Test accuracy with the best model is {}".format(
+                res["acc"]))
+
+
     def _build_loss(self):
         """Build our cross entropy loss."""
 
@@ -376,7 +469,7 @@ class Network:
 
             preds = tf.reshape(self.logits, [-1, pred_shape[3]])
             seg = tf.reshape(self.y_lab, [-1])
-            
+
             # Create cross entropy loss
             self.loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -391,33 +484,8 @@ class Network:
             self.loss += self.config.reg_lambda * l2_loss
 
             # Record summary for loss
-            tf.summary.scalar("loss", self.loss)            
-    
-    def _build_summary(self):
-        """Build summary ops."""
+            tf.summary.scalar("loss", self.loss)
 
-        # Merge all summary op
-        self.summary_op = tf.summary.merge_all()
-
-    def _build_writer(self):
-        """Build the writers and savers"""
-
-        # Create summary writers (one for train, one for validation)
-        self.summary_tr = tf.summary.FileWriter(
-            os.path.join(self.config.log_dir, "./train"))
-        self.summary_va = tf.summary.FileWriter(
-            os.path.join(self.config.log_dir, "./valid"))
-        # Create savers (one for current, one for best)
-        self.saver_cur = tf.train.Saver()
-        self.saver_best = tf.train.Saver()
-        # Save file for the current model
-        self.save_file_cur = os.path.join(
-            self.config.log_dir, "model")
-        # Save file for the best model
-        self.save_file_best = os.path.join(
-            self.config.save_dir, "model")
-        
-        
 def main(config):
     """The main function."""
 
@@ -427,14 +495,14 @@ def main(config):
         package_data(config.data_dir)
     else:
         print("Packaging data skipped.")
-        
+
     # Load packaged data
     print("Loading data...")
     f = h5py.File('videoData.h5', 'r')
     data = []
     for group in f:
         """
-        Keys of groups:    
+        Keys of groups:
         ['class_colour',
          'class_id',
          'frame-10s',
@@ -445,115 +513,41 @@ def main(config):
          'video']
         """
         data.append(f[group])
-    
+
     d = data[0]
     nrows = len(data)
     x_tr = data[:nrows//2]
     x_va = data[nrows//2:]
-    
+
     x = []
     y = []
-    for row in data:    
+    for row in data:
         x.append(row['frame-10s'][:])
        # y.append(row['class_colour'][:])
         y.append(row['instance_id'][:])
 
-    
+
     x = np.asarray(x)
     y = np.asarray(y)
 
     x_tr = x[:nrows//2]
     x_va = x[nrows//2:]
-    
+
     y_tr = y[:nrows//2]
     y_va = y[nrows//2:]
-    
+
     # TODO: load from csv note pixels are backwards
     class2lab = {(0 ,0, 0): 0,
                  (136, 136, 136): 1,
                  (67, 67, 67): 0}
-    
-    l = lambda x: class2lab[tuple(x)] if tuple(x) in class2lab else 0
-    y_tr_labels = np.apply_along_axis(l, -1, y_tr)
-    
+
+    # l = lambda x: class2lab[tuple(x)] if tuple(x) in class2lab else 0
+    # y_tr_labels = np.apply_along_axis(l, -1, y_tr)
+
     net = Network(x_tr.shape, config)
     net.train(x_tr, y_tr, x_va, y_va, y_tr_labels)
-    
-##-------------------------------------------------------------------------------
-## Author: Lukasz Janyst <lukasz@jany.st>
-## Date:   14.06.2017
-##
-## This essentially is the code from
-## http://cv-tricks.com/image-segmentation/transpose-convolution-in-tensorflow/
-## with minor modifications done by me. See test_upscale.py to see how it works.
-##-------------------------------------------------------------------------------
-#
-#import tensorflow as tf
-#import numpy as np
-#
-#-------------------------------------------------------------------------------
-def get_bilinear_filter(filter_shape, upscale_factor):
-    """
-    Creates a weight matrix that performs a bilinear interpolation
-    :param filter_shape:   shape of the upscaling filter
-    :param upscale_factor: scaling factor
-    :return:               weight tensor
-    """
 
-    kernel_size = filter_shape[1]
 
-    if kernel_size % 2 == 1:
-        centre_location = upscale_factor - 1
-    else:
-        centre_location = upscale_factor - 0.5
-
-    bilinear = np.zeros([filter_shape[0], filter_shape[1]])
-    for x in range(filter_shape[0]):
-        for y in range(filter_shape[1]):
-            value = (1 - abs((x - centre_location)/upscale_factor)) * \
-                    (1 - abs((y - centre_location)/upscale_factor))
-            bilinear[x, y] = value
-
-    weights = np.zeros(filter_shape)
-    for i in range(filter_shape[2]):
-        weights[:, :, i, i] = bilinear
-    init = tf.constant_initializer(value=weights,
-                                   dtype=tf.float32)
-
-    bilinear_weights = tf.get_variable(name="bilinear_filter", initializer=init,
-                                       shape=weights.shape)
-    return bilinear_weights
-
-#-------------------------------------------------------------------------------
-def upsample(x, n_channels, upscale_factor, name):
-    """
-    Create an upsampling tensor
-    :param x:              input tensor
-    :param n_channels:     number of channels
-    :param upscale_factor: scale factor
-    :param name:           name of the tensor
-    :return:               upsampling tensor
-    """
-
-    kernel_size = 2*upscale_factor - upscale_factor%2
-    stride      = upscale_factor
-    strides     = [1, stride, stride, 1]
-    with tf.variable_scope(name):
-        in_shape = tf.shape(x)
-
-        h = in_shape[1] * stride
-        w = in_shape[2] * stride
-        new_shape = [in_shape[0], h, w, n_channels]
-
-        output_shape = tf.stack(new_shape)
-
-        filter_shape = [kernel_size, kernel_size, n_channels, n_channels]
-
-        weights = get_bilinear_filter(filter_shape, upscale_factor)
-        deconv = tf.nn.conv2d_transpose(x, weights, output_shape,
-                                        strides=strides, padding='SAME')
-    return deconv
-    
 if __name__ == "__main__":
 
     # Parse configuration
@@ -564,5 +558,3 @@ if __name__ == "__main__":
         exit(1)
 
     main(config)
-
-
