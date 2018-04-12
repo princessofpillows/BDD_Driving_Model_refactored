@@ -347,7 +347,8 @@ class Network:
                        },
                        feed_dict={
                            self.x_in: x_va,
-                           self.y_in: y_va
+                           self.y_in: y_va,
+                           self.y_lab: y_lab_b,
                        })
 #                    # Write Validation Summary
                    self.summary_va.add_summary(
@@ -369,6 +370,36 @@ class Network:
                            sess, self.save_file_best,
                            write_meta_graph=False,
                        )
+                       
+    def test(self, x_te, y_te, y_lab_b):
+        """Test function"""
+        with tf.Session() as sess:
+            # Load the best model
+            latest_checkpoint = tf.train.latest_checkpoint(self.config.save_dir)
+
+            if tf.train.latest_checkpoint(self.config.save_dir) is not None:
+                print("Restoring from {}...".format(
+                    self.config.save_dir))
+                self.saver_best.restore(
+                    sess,
+                    latest_checkpoint
+                )
+
+            # Test on the test data
+            res = sess.run(
+                fetches={
+                    "acc": self.acc,
+                },
+                feed_dict={
+                    self.x_in: x_te,
+                    self.y_in: y_te,
+                    self.y_lab: y_lab_b,
+                },
+            )
+
+            # Report (print) test result
+            print("Test accuracy with the best model is {}".format(
+                res["acc"]))
 
 
     def _build_loss(self):
