@@ -23,8 +23,32 @@ class Network:
         self._build_loss()
         self._build_optim()
         self._build_eval()
-#        self._build_summary()
-#        self._build_writer()
+        self._build_summary()
+        self._build_writer()
+
+    def _build_writer(self):
+        """Build writers and savers for the model"""
+
+        # Create summary writers (one for train, one for validation)
+        self.summary_tr = tf.summary.FileWriter(
+            os.path.join(self.config.log_dir, "train"))
+        self.summary_va = tf.summary.FileWriter(
+            os.path.join(self.config.log_dir, "valid"))
+        # Create savers (one for current, one for best)
+        self.saver_cur = tf.train.Saver()
+        self.saver_best = tf.train.Saver()
+        # Save file for the current model
+        self.save_file_cur = os.path.join(
+            self.config.log_dir, "model")
+        # Save file for the best model
+        self.save_file_best = os.path.join(
+            self.config.save_dir, "model")
+
+    def _build_summary(self):
+        """Build summary operations"""
+
+        # Merge all the summary op
+        self.summary_op = tf.summary.merge_all()
 
     def _build_placeholder(self):
         """Build placeholders."""
@@ -106,7 +130,7 @@ class Network:
             self.best_va_acc_in = tf.placeholder(tf.float32, shape=())
             self.best_va_acc = tf.get_variable(
                 "best_va_acc", shape=(), trainable=False)
-            # TODO: Assign op to store this value to TF variable
+            #Assign op to store this value to TF variable
             self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)  
             
     def _build_model(self):
@@ -231,9 +255,31 @@ class Network:
                 self.n_range_in: x_tr_range,
             })
 
+            # Check if previous train exists
+            b_resume = tf.train.latest_checkpoint(self.config.log_dir)
+
+            if b_resume:
+                # Restore network from log_dir for curr model
+                print("Restoring from {}...".format(
+                    self.config.log_dir))
+
+                self.saver_cur.restore(
+                    sess, 
+                    b_resume
+                )
+
+                # Restore number of steps so far
+                step = self.global_step.eval()
+                # Restore best acc
+                best_acc = self.best_va_acc.eval()
+                
+            else:
+                print("Starting from scratch...")
+                step = 0
+                best_acc = 0
      
-            step = 0
-            best_acc = 0
+            # step = 0
+            # best_acc = 0
 
             print("Training...")
             batch_size = config.batch_size
@@ -262,9 +308,24 @@ class Network:
 #                        "global_step": self.global_step,
 #                    }
 #                else:
-                fetches = {
-                    "optim": self.optim,
-                }
+                # fetches = {
+                    # "optim": self.optim,
+                # }
+
+                K = self.config.report_freq
+                # records 0 % K or step=1
+                b_write_summary = step % K == 0 and step!=0 or step == 1
+                if b_write_summary:
+                    fetches = {
+                        "optim": self.optim,
+                        "summary": self.summary_op,
+                        "global_step": self.global_step,
+                    }
+                else:
+                    fetches = {
+                        "optim": self.optim,
+                    }
+
 
                 # Run the operations necessary for training
                 res = sess.run(
@@ -276,61 +337,57 @@ class Network:
                     },
                 )
 
-                # Write Training Summary if we fetched it (don't write
-                # meta graph). See that we actually don't need the above
-                # `b_write_summary` actually :-). I know that we can check this
-                # with b_write_summary, but let's check `res` to do this as an
-                # exercise.
-#                if "summary" in res:
-#                    self.summary_tr.add_summary(
-#                        res["summary"], global_step=res["global_step"],
-#                    )
-#                    self.summary_tr.flush()
-#
-#                    # Also save current model to resume when we write the
-#                    # summary.
-#                    self.saver_cur.save(
-#                        sess, self.save_file_cur,
-#                        global_step=self.global_step,
-#                        write_meta_graph=False,
-#                    )
+               # Write Training Summary if we fetched it (no meta graph)
+                if "summary" in res:
+                   self.summary_tr.add_summary(
+                       res["summary"], global_step=res["global_step"],
+                   )
+                   self.summary_tr.flush()
 
-                # Validate every N iterations and at the first
-                # iteration. Use `self.config.val_freq`. Make sure that we
-                # validate at the correct iterations. HINT: should be similar
-                # to above.
-#                b_validate = (step % self.config.report_freq) == 0
-#                if b_validate:
-#                    res = sess.run(
-#                        fetches={
-#                            "acc": self.acc,
-#                            "summary": self.summary_op,
-#                            "global_step": self.global_step,
-#                        },
-#                        feed_dict={
-#                            self.x_in: x_va,
-#                            self.y_in: y_va
-#                        })
-##                    # Write Validation Summary
-##                    self.summary_va.add_summary(
-##                        res["summary"], global_step=res["global_step"],
-##                    )
-#                    self.summary_va.flush()
+                   # Also save current model to resume when we write the
+                   # summary.
+                   self.saver_cur.save(
+                       sess, self.save_file_cur,
+                       global_step=self.global_step,
+                       write_meta_graph=False,
+                   )
+
+                # Validate every N iterations and at the first iteration.
+                V = self.config.val_freq
+                b_validate = step % V == 0 and step!=0 or step == 1
+                if b_validate:
+                   res = sess.run(
+                       fetches={
+                           "acc": self.acc,
+                           "summary": self.summary_op,
+                           "global_step": self.global_step,
+                       },
+                       feed_dict={
+                           self.x_in: x_va,
+                           self.y_in: y_va
+                       })
+#                    # Write Validation Summary
+                   self.summary_va.add_summary(
+                       res["summary"], global_step=res["global_step"],
+                   )
+                   self.summary_va.flush()
 
                     # If best validation accuracy, update W_best, b_best, and
                     # best accuracy. We will only return the best W and b
-#                    if res["acc"] > best_acc:
-#                        best_acc = res["acc"]
-#                        # TODO: Write best acc to TF variable
-#                        sess.run(self.acc_assign_op, feed_dict={
-#                            self.best_va_acc_in: best_acc
-#                        })
+                   if res["acc"] > best_acc:
+                       best_acc = res["acc"]
+                       # Write best acc to TF variable
+                       sess.run(self.acc_assign_op, feed_dict={
+                           self.best_va_acc_in: best_acc
+                       })
 
-                        # Save the best model
-#                        self.saver_best.save(
-#                            sess, self.save_file_best,
-#                            write_meta_graph=False,
-#                        )
+                       # Save the best model
+                       self.saver_best.save(
+                           sess, self.save_file_best,
+                           write_meta_graph=False,
+                       )
+
+
     def _build_loss(self):
         """Build our cross entropy loss."""
 
@@ -381,6 +438,8 @@ def main(config):
         data.append(f[group])
     
     d = data[0]
+    # reduce data
+    data = data[:1000]
     nrows = len(data)
     x_tr = data[:nrows//2]
     x_va = data[nrows//2:]
@@ -411,16 +470,16 @@ def main(config):
     y_tr_labels = np.apply_along_axis(l, -1, y_tr)
     
     net = Network(x_tr.shape, config)
-    net.train(x_tr, x_tr, x_va, x_tr, y_tr_labels)
+    net.train(x_tr, y_tr, x_va, y_tr, y_tr_labels)
     
 
-#
-#def loss(inp, out, n_c):
+
+# def loss(inp, out, n_c):
 #    return 1
 
 
-#def train(x, y, config): 
-#    
+# def train(x, y, config): 
+   
 #    with tf.Session() as sess:
 #        print("Initializing...")
 #        sess.run(tf.global_variables_initializer())
@@ -429,19 +488,19 @@ def main(config):
 #                initializer=tf.zeros_initializer(),
 #                dtype=tf.int64,
 #                trainable=False)
-#        
+       
 #        lr = config.learning_rate
 #        opt = tf.train.AdamOptimizer()
 #        num_classes = y.shape[1]
 #        x_in_shp = (None, *x.shape[1:])
-#        
+       
 #        # Create Placeholders for inputs
 #        x_in = tf.placeholder(tf.float32, shape=x_in_shp)
 #        y_in = tf.placeholder(tf.int64, shape=(None, ))
 #        loss = loss(x_in, y_in, num_classes)
 #        minimize = opt.minimize(
 #                loss, global_step=global_step)
-#        
+       
 #        ######## Done opt
 #        batch_size = config.batch_size
 #        max_iter = config.max_iter
@@ -451,7 +510,7 @@ def main(config):
 #                len(x_tr), batch_size, replace=False)
 #            x_b = np.array([x_tr[_i] for _i in ind_cur])
 #            y_b = np.array([y_tr[_i] for _i in ind_cur])\
-#            
+           
 #            res = sess.run(
 #                    fetches=[minimize],
 #                    feed_dict={
@@ -459,7 +518,7 @@ def main(config):
 #                        y_in: y_b,
 #                    },
 #                )
-#            
+           
     
 if __name__ == "__main__":
 
