@@ -1,12 +1,14 @@
 
-import os, glob, h5py, cv2, json
+import glob, h5py, cv2, json
 import numpy as np
 
 from skimage.transform import resize
 from tqdm import tqdm
+from pathlib import Path, PurePath
 
 from .checkData import check_data
 from .processInfo import read_json
+
 
 def package_data(data_dir):
     '''
@@ -33,19 +35,21 @@ def package_data(data_dir):
 
     '''
 
+    # use pathlib
+    data_dir = Path(data_dir)
+
     # checks all data in path specified at data_dir and returns the prepared data if valid
-    videopaths, infopaths, framepaths, class_colour, class_id, instance_colour, instance_id, raw_images = check_data(data_dir)
+    videos, info, frames, class_colour, class_id, instance_colour, instance_id, raw_images = check_data(data_dir)
 
     # open file for r/w ('a' specifies not to overwrite)
     h5f = h5py.File('videoData.h5', 'a')
 
     # loops through all videos
-    for i in tqdm(range(len(videopaths))):
+    for i in tqdm(range(len(videos))):
         # gets name of video
-        name = os.path.basename(videopaths[i])[:-4]
-        
+        name = data_dir.stem
         # open video for frame processing
-        video = cv2.VideoCapture(videopaths[i])
+        video = cv2.VideoCapture(str(videos[i]))
 
         # ensure video opens successfully
         if not video.isOpened():
@@ -55,9 +59,9 @@ def package_data(data_dir):
             continue
 
         # get video metrics
-        fps = np.rint(video.get(cv2.CAP_PROP_FPS))
-        frames = video.get(cv2.CAP_PROP_FRAME_COUNT)
-        length = np.rint(frames/fps)
+        fps = int(np.rint(video.get(cv2.CAP_PROP_FPS)))
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        num_frames = int(np.rint(total_frames/fps))
 
         videodata = []
         count = 0
@@ -84,13 +88,13 @@ def package_data(data_dir):
         video.release()
         # get data ready to write
         video_data = np.asarray(videodata)
-        info_data = read_json(infopaths[i])
-        frame_data = cv2.imread(framepaths[i], 1)
-        class_colour_data = cv2.imread(class_colour[i], 1)
-        class_id_data = cv2.imread(class_id[i], 1)
-        instance_colour_data = cv2.imread(instance_colour[i], 1)
-        instance_id_data = cv2.imread(instance_id[i], 1)
-        raw_images_data = cv2.imread(raw_images[i], 1)
+        info_data = read_json(info[i], num_frames, hz)
+        frame_data = cv2.imread(str(frames[i]), 1)
+        class_colour_data = cv2.imread(str(class_colour[i]), 1)
+        class_id_data = cv2.imread(str(class_id[i]), 1)
+        instance_colour_data = cv2.imread(str(instance_colour[i]), 1)
+        instance_id_data = cv2.imread(str(instance_id[i]), 1)
+        raw_images_data = cv2.imread(str(raw_images[i]), 1)
         # resize images
         frame_data = resize(frame_data, (640, 360, 3))
         class_colour_data = resize(class_colour_data, (640, 360, 3))
