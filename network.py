@@ -278,9 +278,6 @@ class Network:
                 step = 0
                 best_acc = 0
      
-            # step = 0
-            # best_acc = 0
-
             print("Training...")
             batch_size = config.batch_size
             max_iter = config.max_iter
@@ -295,23 +292,9 @@ class Network:
                 x_b = np.array([x_tr[_i] for _i in ind_cur])
                 y_b = np.array([y_tr[_i] for _i in ind_cur])
                 y_lab_b = np.array([y_lab[_i] for _i in ind_cur])
-                # TODO: Write summary every N iterations as well as the first
-                # iteration. Use `self.config.report_freq`. Make sure that we
-                # write at the first iteration, and every kN iterations where k
-                # is an interger. HINT: we write the summary after we do the
-                # optimization.
-#                b_write_summary = (step % self.config.report_freq) == 0
-#                if b_write_summary:
-#                    fetches = {
-#                        "optim": self.optim,
-#                        "summary": self.summary_op,
-#                        "global_step": self.global_step,
-#                    }
-#                else:
-                # fetches = {
-                    # "optim": self.optim,
-                # }
 
+                # Write summary every N iterations as well as the first
+                # iteration. Use `self.config.report_freq`.
                 K = self.config.report_freq
                 # records 0 % K or step=1
                 b_write_summary = step % K == 0 and step!=0 or step == 1
@@ -438,8 +421,6 @@ def main(config):
         data.append(f[group])
     
     d = data[0]
-    # reduce data
-    data = data[:1000]
     nrows = len(data)
     x_tr = data[:nrows//2]
     x_va = data[nrows//2:]
@@ -471,54 +452,6 @@ def main(config):
     
     net = Network(x_tr.shape, config)
     net.train(x_tr, y_tr, x_va, y_tr, y_tr_labels)
-    
-
-
-# def loss(inp, out, n_c):
-#    return 1
-
-
-# def train(x, y, config): 
-   
-#    with tf.Session() as sess:
-#        print("Initializing...")
-#        sess.run(tf.global_variables_initializer())
-#        global_step = tf.get_variable(
-#                "global_step", shape=(),
-#                initializer=tf.zeros_initializer(),
-#                dtype=tf.int64,
-#                trainable=False)
-       
-#        lr = config.learning_rate
-#        opt = tf.train.AdamOptimizer()
-#        num_classes = y.shape[1]
-#        x_in_shp = (None, *x.shape[1:])
-       
-#        # Create Placeholders for inputs
-#        x_in = tf.placeholder(tf.float32, shape=x_in_shp)
-#        y_in = tf.placeholder(tf.int64, shape=(None, ))
-#        loss = loss(x_in, y_in, num_classes)
-#        minimize = opt.minimize(
-#                loss, global_step=global_step)
-       
-#        ######## Done opt
-#        batch_size = config.batch_size
-#        max_iter = config.max_iter
-#            # For each epoch
-#        for step in trange(step, max_iter):
-#            ind_cur = np.random.choice(
-#                len(x_tr), batch_size, replace=False)
-#            x_b = np.array([x_tr[_i] for _i in ind_cur])
-#            y_b = np.array([y_tr[_i] for _i in ind_cur])\
-           
-#            res = sess.run(
-#                    fetches=[minimize],
-#                    feed_dict={
-#                        x_in: x_b,
-#                        y_in: y_b,
-#                    },
-#                )
-           
     
 if __name__ == "__main__":
 
