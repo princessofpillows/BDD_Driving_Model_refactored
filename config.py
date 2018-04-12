@@ -36,7 +36,7 @@ train_arg.add_argument("--batch_size", type=int,
                        help="Size of each training batch")
 
 train_arg.add_argument("--max_iter", type=int,
-                       default=5000,
+                       default=100,
                        help="Number of iterations to train")
 
 train_arg.add_argument("--log_dir", type=str,

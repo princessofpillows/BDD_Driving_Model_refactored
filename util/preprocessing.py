@@ -122,7 +122,7 @@ def package_data(data_dir):
     h5f.close()
 
 
-def _resize(image, dims=(640, 360, 3)):
+def _resize(image, dims=(244, 244, 3)):
     """Wrapper for resize to avoid having pixels between [0, 1]"""
     resized = resize(image, dims, preserve_range=True) # Downscale, NOTE puts float32 between [0, 1]
     return resized   
