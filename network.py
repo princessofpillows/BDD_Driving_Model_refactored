@@ -5,7 +5,7 @@ import tensorflow as tf
 from tqdm import trange
 
 from config import get_config, print_usage
-from util.preprocessing import package_data
+from utils.preprocessing import package_data
 from layerutils import fcl, convl
 
 
