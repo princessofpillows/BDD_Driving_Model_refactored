@@ -16,6 +16,8 @@ The [Berkeley Deep Drive](https://github.com/gy20073/BDD_Driving_Model) neueral 
 * [openCV 3.0+](https://pypi.python.org/pypi/opencv-python) for image processing
 * [tqdm](https://pypi.python.org/pypi/tqdm) to view progress throughout runtime
 * [scikit-image](http://scikit-image.org/docs/dev/install.html) for image processing
+* [h5py]("http://docs.h5py.org/en/latest/build.html") for data storage
+>>>>>>> 7d3de247f230add14cf46177f242cab465c5f210
 
 pipenv will install all of the Pipfile required packages.
 

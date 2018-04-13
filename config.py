@@ -20,15 +20,15 @@ def add_argument_group(name):
 train_arg = add_argument_group("Training")
 
 train_arg.add_argument("--data_dir", type=str,
-                       default="/Users/ahendy/Developer/BDD_Driving_Model_refactored/data",
+                       default="/Users/austin/Developer/BDD_Driving_Model_refactored/data",
                        help="Directory with train/test/val data")
 
 train_arg.add_argument("--weights_dir", type=str,
-                       default="/Users/dariasova/projects/BDD_data/weights/bvlc_alexnet.npy",
+                       default="C:/Users/austin/Developer/BDD_Driving_Model_refactored/bvlc_alexnet.npy",
                        help="Directory with bvlc_alexnet.npy weights data. Specify file name.")
 
 train_arg.add_argument("--package_data", type=bool,
-                       default=False,
+                       default=True,
                        help="Package data into H5 Format.")
 
 train_arg.add_argument("--learning_rate", type=float,
@@ -44,8 +44,7 @@ train_arg.add_argument("--max_iter", type=int,
                        help="Number of iterations to train")
 
 train_arg.add_argument("--log_dir", type=str,
-                       default="./logs",
-                       help="Directory to save logs and current model")
+                       default="./logs",)
 
 train_arg.add_argument("--save_dir", type=str,
                        default="./save",
