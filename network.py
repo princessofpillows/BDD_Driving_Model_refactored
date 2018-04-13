@@ -6,7 +6,7 @@ from tqdm import trange
 
 from config import get_config, print_usage
 from util.preprocessing import package_data
-import IPython
+from layerutils import fcl, convl
 
 
 class Network:
@@ -20,8 +20,8 @@ class Network:
         # Build the network
         self._build_placeholder()
         self._build_preprocessing()
+#        self._load_initial_weights()
         self._build_model()
-        self._load_initial_weights()
         self._build_loss()
         self._build_optim()
         self._build_eval()
@@ -59,8 +59,7 @@ class Network:
         x_in_shp = (None, *self.x_shp[1:])
         # Create Placeholders for inputs
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
-        self.y_in = tf.placeholder(tf.int64, shape=x_in_shp, name="Y_in")
-        self.y_lab = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_lab")
+        self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
         self.batch_size = tf.shape(self.x_in)[0]
 
     def _build_preprocessing(self):
@@ -110,15 +109,9 @@ class Network:
             # Compute the accuracy of the model. When comparing labels
             # elemwise, use tf.equal instead of `==`. `==` will evaluate if
             # your Ops are identical Ops.#
-
-            self.pred = tf.image.resize_images(
-                images=self.logits,
-                size=[244, 244],
-                method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
-            )
-            self.pred = tf.argmax(self.pred, axis=3)
-            self.acc = tf.reduce_mean(
-                tf.to_float(tf.equal(self.pred, self.y_lab))
+            self.pred = tf.argmax(self.logits, axis=3) # Argmax per pixel
+            self.acc = tf.reduce_mean( 
+                tf.to_float(tf.equal(self.pred, self.y_in))
             )
 
             # Record summary for accuracy
@@ -133,7 +126,7 @@ class Network:
             #Assign op to store this value to TF variable
             self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)
 
-    def _load_initial_weights(self):
+    def _load_initial_weights(self, sess):
         """Load weights from a file into network.
         Weights taken from http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
         It is a dict of lists """
@@ -141,32 +134,30 @@ class Network:
         print("Loading pretrained weights for Alexnet...")
         # load weights from the file
         weights_dict = np.load(self.config.weights_dir, encoding='bytes').item()
-        # IPython.embed()
-
         # Loop over all layer names stored in the weights dict
         #dict_keys(['fc6', 'fc7', 'fc8', 'conv3', 'conv2', 'conv1', 'conv5', 'conv4'])
         for op_name in weights_dict:
 
             # can define skips layer that will be trained fromscratch like this:
             # if op_name not in self.SKIP_LAYER:
-            with tf.variable_scope("Network", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("Network", reuse=True):
 
                 with tf.variable_scope(op_name, reuse=True):
-
+    
                     # Assign weights/biases to their corresponding tf variable
-                    for data in weights_dict[op_name]:
-                        with tf.Session() as sess:
+                    try:
+                        weights, biases = weights_dict[op_name]
 
-                            # IPython.embed()
-                            # Biases
-                            if len(data.shape) == 1:
-                                var = tf.get_variable('biases', trainable=False)
-                                sess.run(var.assign(data))
+                    except:
+                        import IPython; IPython.embed()
+                        # Biases
+                        var = tf.get_variable('biases', trainable=False)
+                        sess.run(var.assign(biases))
 
-                            # Weights
-                            else:
-                                var = tf.get_variable('weights', trainable=False)
-                                sess.run(var.assign(data))
+                        # Weights
+                        var = tf.get_variable('weights', trainable=False)
+                        sess.run(var.assign(weights))
+                            
         print("Weights loaded.")
 
 ###################
@@ -176,8 +167,10 @@ class Network:
 
     def alexNet(self):
         print("Building Alexnet into the network...")
+        
         # Normalize using the above training-time statistics
         cur_in = (self.x_in - self.n_mean) / self.n_range
+        print("Starting shape...", cur_in.shape)
 
         # 1st Layer Conv1
         cur_in = convl(cur_in, 11, 11, 96, 4, 4, padding='VALID', name='conv1')
@@ -188,6 +181,7 @@ class Network:
         cur_in = convl(cur_in, 5, 5, 256, 1, 1, groups=2, name='conv2')
         cur_in = tf.contrib.layers.max_pool2d(cur_in,
                                               [3, 3], 2, padding='VALID')
+
         # 3rd Layer Conv3
         cur_in = convl(cur_in, 3, 3, 384, 1, 1, name='conv3')
 
@@ -197,72 +191,64 @@ class Network:
         # 5th Layer Conv5
         cur_in = convl(cur_in, 3, 3, 256, 1, 1, groups=2, name='conv5')
 
-        cur_in = tf.contrib.layers.max_pool2d(cur_in,
-                                              [3, 3], 2, padding='VALID')
-        # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
-        flattened = tf.reshape(cur_in, [-1, 6*6*256])
-        cur_in = fcl(flattened, 6*6*256, 4096, name='fc6')
-        # dropout6 = dropout(fc6, self.KEEP_PROB)
+#        # TODO: Decide to use this layer
+#        cur_in = tf.contrib.layers.max_pool2d(cur_in,
+#                                              [3, 3], 2, padding='VALID')
+        
+        cur_in = tf.contrib.layers.dropout(cur_in,
+                                    0.3, is_training=True)
+        # Fully connected layers with conv
+        cur_in = convl(cur_in, 6, 6, 4096, 1, 1,  padding='VALID', name='fc6')
+
         cur_in = tf.contrib.layers.dropout(cur_in,
                                     0.3, is_training=True)
 
-        # 7th Layer: FC (w ReLu) -> Dropout
-        cur_in = fcl(cur_in, 4096, 4096, name='fc7')
-        # dropout7 = dropout(fc7, self.KEEP_PROB)
+        # 8th Layer: FC (w ReLu) -> Dropout (as conv layer)
+        cur_in = convl(cur_in, 1, 1, 4096, 1, 1,  padding='VALID', name='fc7')
+
         cur_in = tf.contrib.layers.dropout(cur_in,
                                     0.3, is_training=True)
+        print("Starting shape...", cur_in.shape)
 
         # 8th Layer: FC and return unscaled activations
         # cur_in = fcl(cur_in, 4096, self.config.num_class, name='fc8')
-        cur_in = fcl(cur_in, 4096, 1000, name='fc8')
-
         print("AlexNet Done.")
         return cur_in
 
 
     def _build_model(self):
-        """Build our MLP network."""
-
-        # Initializer and activations
-        if self.config.activ_type == "relu":
-            activ = tf.nn.relu
-            kernel_initializer = tf.keras.initializers.he_normal()
-        elif self.config.activ_type == "tanh":
-            activ = tf.nn.tanh
-            kernel_initializer = tf.glorot_normal_initializer()
+        """Build Network."""
 
         # Build the network (use tf.layers)
         with tf.variable_scope("Network", reuse=tf.AUTO_REUSE):
             # Normalize using the above training-time statistics
-            cur_in = (self.x_in - self.n_mean) / self.n_range
-            # num_unit = self.config.num_unit
+            yshps = [x.value for x in self.y_in.get_shape()]
 
             cur_in = self.alexNet()
             print("Shape After alexnet..")
             print(cur_in.shape)
+            
             self.logits = tf.contrib.layers.conv2d(cur_in, self.config.num_class, [1, 1],
                                    activation_fn=None,
                                    padding="VALID",
                                    biases_initializer=None)
 
-            yshps = [x.value for x in self.y_in.get_shape()]
-#            self.logits = tf.image.resize_nearest_neighbor(self.logits,
-#                                                   [640,
-#                                                    360])
+
+            # Upscale logits to NWHC using nearest neighbor interpolation
+            # turns (?,?,?, num_class) back to class scores for each pixel
             self.logits = tf.image.resize_images(
                 images=self.logits,
-#                size=[self.batch_size, 640*360],
-                size=[244, 244],
-
+                size=[yshps[1], yshps[2]], 
                 method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
             )
+            
+            print("Shape After Reshape..", self.logits.shape)
 
-            # # Get list of all weights in this scope. They are called "kernel"
-            # # in tf.layers.dense.
-            # self.kernels_list = [
-            #     _v for _v in tf.trainable_variables() if "kernel" in _v.name]
+            self.kernels_list = [
+                _v for _v in tf.trainable_variables() if "kernel" in _v.name]         
 
-    def train(self, x_tr, y_tr, x_va, y_va, y_lab):
+
+    def train(self, x_tr, y_tr, x_va, y_va):
         """Training function.
 
         Parameters
@@ -297,6 +283,8 @@ class Network:
         # ----------------------------------------
         # Run TensorFlow Session
         with tf.Session() as sess:
+            
+            self._load_initial_weights(sess)
             # Init
             print("Initializing...")
             sess.run(tf.global_variables_initializer())
@@ -343,7 +331,6 @@ class Network:
                     len(x_tr), batch_size, replace=True)
                 x_b = np.array([x_tr[_i] for _i in ind_cur])
                 y_b = np.array([y_tr[_i] for _i in ind_cur])
-                y_lab_b = np.array([y_lab[_i] for _i in ind_cur])
 
                 # Write summary every N iterations as well as the first
                 # iteration. Use `self.config.report_freq`.
@@ -357,11 +344,11 @@ class Network:
                         "global_step": self.global_step,
                     }
                 else:
-                    fetches = {
+                 fetches = {
                         "optim": self.optim,
+                        "summary": self.summary_op,
+                        "global_step": self.global_step,
                     }
-
-
 
                 # Run the operations necessary for training
                 res = sess.run(
@@ -369,7 +356,6 @@ class Network:
                     feed_dict={
                         self.x_in: x_b,
                         self.y_in: y_b,
-                        self.y_lab: y_lab_b,
                     },
                 )
 
@@ -401,7 +387,6 @@ class Network:
                         feed_dict={
                            self.x_in: x_va,
                            self.y_in: y_va,
-                           self.y_lab: y_lab_b,
                         })
                     # Write Validation Summary
                     self.summary_va.add_summary(
@@ -424,7 +409,7 @@ class Network:
                            write_meta_graph=False,
                        )
 
-    def test(self, x_te, y_te, y_lab_b):
+    def test(self, x_te, y_te):
         """Test function"""
         with tf.Session() as sess:
             # Load the best model
@@ -446,7 +431,6 @@ class Network:
                 feed_dict={
                     self.x_in: x_te,
                     self.y_in: y_te,
-                    self.y_lab: y_lab_b,
                 },
             )
 
@@ -460,15 +444,10 @@ class Network:
 
         with tf.variable_scope("Loss", reuse=tf.AUTO_REUSE):
             pred_shape = [x.value for x in self.logits.get_shape()]
-            seg_shape = [x.value for x in self.y_lab.get_shape()]
-#            tf.reshape(ylab, [-1, ]
-#            preds = tf.image.resize_nearest_neighbor(self.logits, [
-#                                                    seg_shape[1],
-#                                                    seg_shape[2]]
-#                                                  )
+            seg_shape = [x.value for x in self.y_in.get_shape()]
 
             preds = tf.reshape(self.logits, [-1, pred_shape[3]])
-            seg = tf.reshape(self.y_lab, [-1])
+            seg = tf.reshape(self.y_in, [-1])
 
             # Create cross entropy loss
             self.loss = tf.reduce_mean(
@@ -476,11 +455,10 @@ class Network:
                     labels=seg,
                     logits=preds,
             ))
-#            print(self.logits.shape)
-#            print(self.y_in.shape)
+
             # Create l2 regularizer loss and add
             l2_loss = tf.add_n([
-                tf.reduce_sum(_v**2) for _v in self.kernels_list])
+                tf.nn.l2_loss(_v) for _v in tf.trainable_variables()]) # Note includes biases.
             self.loss += self.config.reg_lambda * l2_loss
 
             # Record summary for loss
@@ -514,38 +492,28 @@ def main(config):
         """
         data.append(f[group])
 
-    d = data[0]
     nrows = len(data)
-    x_tr = data[:nrows//2]
-    x_va = data[nrows//2:]
 
     x = []
     y = []
     for row in data:
         x.append(row['frame-10s'][:])
-       # y.append(row['class_colour'][:])
-        y.append(row['instance_id'][:])
-
+        y.append(row['class_id'][:])
 
     x = np.asarray(x)
     y = np.asarray(y)
-
+    
     x_tr = x[:nrows//2]
     x_va = x[nrows//2:]
 
     y_tr = y[:nrows//2]
     y_va = y[nrows//2:]
-
-    # TODO: load from csv note pixels are backwards
-    class2lab = {(0 ,0, 0): 0,
-                 (136, 136, 136): 1,
-                 (67, 67, 67): 0}
-
-    # l = lambda x: class2lab[tuple(x)] if tuple(x) in class2lab else 0
-    # y_tr_labels = np.apply_along_axis(l, -1, y_tr)
-
+    
+    y_tr_labels = y[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
+    y_va_labels = y[:, :, :, 0]
+    
     net = Network(x_tr.shape, config)
-    net.train(x_tr, y_tr, x_va, y_va, y_tr_labels)
+    net.train(x_tr, y_tr_labels, x_va, y_va_labels)
 
 
 if __name__ == "__main__":

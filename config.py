@@ -44,7 +44,7 @@ train_arg.add_argument("--max_iter", type=int,
                        help="Number of iterations to train")
 
 train_arg.add_argument("--log_dir", type=str,
-                       default="./logs/test",
+                       default="./logs",
                        help="Directory to save logs and current model")
 
 train_arg.add_argument("--save_dir", type=str,
@@ -80,7 +80,7 @@ model_arg.add_argument("--num_hidden", type=int,
                        help="Number of hidden layers")
 
 model_arg.add_argument("--num_class", type=int,
-                       default=2,
+                       default=41,
                        help="Number of classes in the dataset")
 
 model_arg.add_argument("--activ_type", type=str,
