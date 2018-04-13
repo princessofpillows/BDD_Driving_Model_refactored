@@ -20,31 +20,24 @@ def add_argument_group(name):
 train_arg = add_argument_group("Training")
 
 train_arg.add_argument("--data_dir", type=str,
-                       default="/Users/austin/Developer/BDD_Driving_Model_refactored/data",
+                       default="/home/jpatts/Desktop/BDD_Driving_Model_refactored/data/",
                        help="Directory with train/test/val data")
-
-train_arg.add_argument("--weights_dir", type=str,
-                       default="C:/Users/austin/Developer/BDD_Driving_Model_refactored/bvlc_alexnet.npy",
-                       help="Directory with bvlc_alexnet.npy weights data. Specify file name.")
-
-train_arg.add_argument("--package_data", type=bool,
-                       default=True,
-                       help="Package data into H5 Format.")
 
 train_arg.add_argument("--learning_rate", type=float,
                        default=1e-3,
                        help="Learning rate (gradient step size)")
 
 train_arg.add_argument("--batch_size", type=int,
-                       default=1,
+                       default=10,
                        help="Size of each training batch")
 
 train_arg.add_argument("--max_iter", type=int,
-                       default=100,
+                       default=5000,
                        help="Number of iterations to train")
 
 train_arg.add_argument("--log_dir", type=str,
-                       default="./logs",)
+                       default="./logs/test",
+                       help="Directory to save logs and current model")
 
 train_arg.add_argument("--save_dir", type=str,
                        default="./save",
@@ -79,7 +72,7 @@ model_arg.add_argument("--num_hidden", type=int,
                        help="Number of hidden layers")
 
 model_arg.add_argument("--num_class", type=int,
-                       default=41,
+                       default=10,
                        help="Number of classes in the dataset")
 
 model_arg.add_argument("--activ_type", type=str,
