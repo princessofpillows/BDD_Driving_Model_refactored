@@ -12,6 +12,7 @@ def check_data(data_dir):
 
     Parameters
     ----------
+
     data_dir : PurePath object
         Absolute path to the directory containing folders "videos", "info", "frame-10s" and "segmentation"
 
@@ -22,12 +23,13 @@ def check_data(data_dir):
         print('Error: path to', data_dir, 'does not exist, change data_dir in config.py to a valid directory')
         return
 
-    # get list of subdirectories
-    subdirectories = os.listdir(data_dir)
+    # get list of segmentation subdirectories
+    subdirectories = os.listdir(data_dir + 'segmentation')
     # ensure subdirectories are valid
-    if 'videos' not in subdirectories or 'info' not in subdirectories or 'frame-10s' not in subdirectories or 'segmentation' not in subdirectories:
+    if 'class_color' not in subdirectories or 'class_id' not in subdirectories or 'instance_color' not in subdirectories or 'instance_id' not in subdirectories or 'raw_images' not in subdirectories:
         print('Error: data directory', data_dir, 'does not contain all required folders (videos/info/frame-10s/segmentation)')
         return
+
 
     # get list of segmentation subdirectories
     subdirectories = os.listdir(data_dir / 'segmentation')
@@ -52,7 +54,7 @@ def check_data(data_dir):
     # check that paths are not empty
     for path in data:
         if not path:
-            print('Error: data directory', data_dir, 'does not contain data in required format in all folders')
+            print('Error: data directory ' + data_dir + ' does not contain data in required format in all folders')
             return
 
     # find largest dataset to parse
