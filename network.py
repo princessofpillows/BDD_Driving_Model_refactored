@@ -61,6 +61,7 @@ class Network:
         # Create Placeholders for inputs
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
+        self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
         self.batch_size = tf.shape(self.x_in)[0]
 
     def _build_preprocessing(self):
@@ -216,6 +217,11 @@ class Network:
         print("AlexNet Done.")
         return cur_in
 
+    def temporal_net(self, alex_output):
+        flat_alex = tf.contrib.layers.flatten(alex_output)
+        alex_and_movement = tf.concat([flat_alex, self.movement_values], 0)
+        lstm_1 = tf.keras.layers.lstm(alex_and_movement, 256)
+        lstm_2 = tf.keras.layers.lstm(lstm_1, 256)
 
     def _build_model(self):
         """Build Network."""
