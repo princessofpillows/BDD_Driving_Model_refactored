@@ -20,7 +20,7 @@ def add_argument_group(name):
 train_arg = add_argument_group("Training")
 
 train_arg.add_argument("--data_dir", type=str,
-                       default="/Users/austin/Developer/BDD_Driving_Model_refactored/data",
+                       default="/home/jpatts/Desktop/BDD_Driving_Model_refactored/data",
                        help="Directory with train/test/val data")
 
 train_arg.add_argument("--weights_dir", type=str,

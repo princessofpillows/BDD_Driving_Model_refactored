@@ -24,7 +24,7 @@ def check_data(data_dir):
         return
 
     # get list of segmentation subdirectories
-    subdirectories = os.listdir(data_dir + 'segmentation')
+    subdirectories = os.listdir(data_dir / 'segmentation')
     # ensure subdirectories are valid
     if 'class_color' not in subdirectories or 'class_id' not in subdirectories or 'instance_color' not in subdirectories or 'instance_id' not in subdirectories or 'raw_images' not in subdirectories:
         print('Error: data directory', data_dir, 'does not contain all required folders (videos/info/frame-10s/segmentation)')
