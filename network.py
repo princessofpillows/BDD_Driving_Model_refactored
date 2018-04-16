@@ -464,6 +464,7 @@ class Network:
             # Record summary for loss
             tf.summary.scalar("loss", self.loss)
 
+
 def main(config):
     """The main function."""
 

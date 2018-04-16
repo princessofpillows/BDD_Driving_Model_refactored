@@ -31,6 +31,7 @@ train_arg.add_argument("--package_data", type=bool,
                        default=False,
                        help="Package data into H5 Format.")
 
+
 train_arg.add_argument("--learning_rate", type=float,
                        default=1e-3,
                        help="Learning rate (gradient step size)")
@@ -45,7 +46,7 @@ train_arg.add_argument("--max_iter", type=int,
 
 train_arg.add_argument("--log_dir", type=str,
                        default="./logs",
-                       help="Directory to save logs and current model")
+                       help="Size of each training batch")
 
 train_arg.add_argument("--save_dir", type=str,
                        default="./save",
