@@ -52,11 +52,11 @@ def read_json(filename, num_frames, hz):
     # get velocity at current frame
     for frame in range(num_frames):
         # get current time in timestamp (location data is collected every second)
-        t_cur = i * 1000 / hz + data['startTime']
+        t_cur = frame * 1000 / hz + data['startTime']
 
         # make sure current time is after first time
         if t_cur < data['timestamp'][0]:
-            frame_velocity[i, :] = velocity[0, :]
+            frame_velocity[frame, :] = velocity[0, :]
             continue
 
         # find timestamp before t_cur
@@ -65,7 +65,7 @@ def read_json(filename, num_frames, hz):
                 t_prev += 1
         # last timestamp for locations reached
         except IndexError:
-            frame_velocity[i, :] = velocity[t_prev, :]
+            frame_velocity[frame, :] = velocity[t_prev, :]
             continue
 
         # t_cur is between t_prev and t_next

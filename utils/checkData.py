@@ -111,7 +111,6 @@ def send_to_debug(data_dir, name):
         # move data
         filepaths = [data_dir / 'videos' / (name + '.mov'), data_dir / 'info' / (name + '.json'), data_dir / 'frame-10s' / (name + '.jpg'), data_dir / 'segmentation' / 'class_color' / (name + '.png'), data_dir / 'segmentation' / 'class_id' / (name + '.png'), data_dir / 'segmentation' / 'instance_color' / (name + '.png'), data_dir / 'segmentation' / 'instance_id' / (name + '.png'), data_dir / 'segmentation' / 'raw_images' / (name + '.jpg')]
         for f in filepaths:
-            print(f)
             os.rename(f, newpath / f.name)
         print('Warning: moving video ' + name + ' to', newpath)
     except FileNotFoundError:

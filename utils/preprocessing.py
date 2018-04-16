@@ -44,10 +44,13 @@ def package_data(data_dir):
     # open file for r/w ('a' specifies not to overwrite)
     h5f = h5py.File('videoData.h5', 'a')
 
+    # keep track of shortest video, and cut all videos to this length
+    min_frames = int(cv2.VideoCapture(str[videos[0]]).get(cv2.CAP_PROP_FRAME_COUNT))
+
     # loops through all videos
     for i in tqdm(range(len(videos))):
         # gets name of video
-        name = data_dir.stem
+        name = videos[i].stem
         # open video for frame processing
         video = cv2.VideoCapture(str(videos[i]))
 
@@ -61,6 +64,9 @@ def package_data(data_dir):
         # get video metrics
         fps = int(np.rint(video.get(cv2.CAP_PROP_FPS)))
         total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        # update shortest video
+        if total_frames < min_frames:
+            min_frames = total_frames
         num_frames = int(np.rint(total_frames/fps))
 
         videodata = []
@@ -73,7 +79,7 @@ def package_data(data_dir):
             # get frame of video
             ret, frame = cv2.VideoCapture.read(video)
             # check if we have reached end of video
-            if ret != True:
+            if ret != True or count == min_frames:
                 break
             
             # record frame at 3hz with downsampled resolution
@@ -89,6 +95,8 @@ def package_data(data_dir):
         # get data ready to write
         video_data = np.asarray(videodata)
         info_data = read_json(info[i], num_frames, hz)
+        if info_data is None:
+            continue
         frame_data = cv2.imread(str(frames[i]), 1)
         class_colour_data = cv2.imread(str(class_colour[i]), 1)
         class_id_data = cv2.imread(str(class_id[i]), 1)
