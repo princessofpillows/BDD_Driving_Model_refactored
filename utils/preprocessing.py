@@ -1,9 +1,9 @@
-
 import glob, h5py, cv2, json
 import numpy as np
 
 from skimage.transform import resize
 from tqdm import tqdm
+
 from pathlib import Path, PurePath
 
 from .checkData import check_data
