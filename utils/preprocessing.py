@@ -1,9 +1,9 @@
-
 import glob, h5py, cv2, json
 import numpy as np
 
 from skimage.transform import resize
 from tqdm import tqdm
+
 from pathlib import Path, PurePath
 
 from .checkData import check_data
@@ -79,12 +79,13 @@ def package_data(data_dir):
             # get frame of video
             ret, frame = cv2.VideoCapture.read(video)
             # check if we have reached end of video
+
             if ret != True or count == min_frames:
                 break
             
             # record frame at 3hz with downsampled resolution
             if int(count % hz) == 0:
-                frame = resize(frame, (640, 360, 3), preserve_range=True)
+                frame = _resize(frame)
                 videodata.append(frame)
 
             # count frames to ensure 3hz
@@ -104,12 +105,12 @@ def package_data(data_dir):
         instance_id_data = cv2.imread(str(instance_id[i]), 1)
         raw_images_data = cv2.imread(str(raw_images[i]), 1)
         # resize images
-        frame_data = resize(frame_data, (640, 360, 3))
-        class_colour_data = resize(class_colour_data, (640, 360, 3))
-        class_id_data = resize(class_id_data, (640, 360, 3))
-        instance_colour_data = resize(instance_colour_data, (640, 360, 3))
-        instance_id_data = resize(instance_id_data, (640, 360, 3))
-        raw_images_data = resize(raw_images_data, (640, 360, 3))
+        frame_data = _resize(frame_data)
+        class_colour_data = _resize(class_colour_data)
+        class_id_data = _resize(class_id_data)
+        instance_colour_data = _resize(instance_colour_data)
+        instance_id_data = _resize(instance_id_data)
+        raw_images_data = _resize(raw_images_data)
 
         # write group for videoname
         try:
@@ -132,3 +133,9 @@ def package_data(data_dir):
 
     # close file
     h5f.close()
+
+
+def _resize(image, dims=(640, 360, 3)):
+    """Wrapper for resize to avoid having pixels between [0, 1]"""
+    resized = resize(image, dims, preserve_range=True) # Downscale, NOTE puts float32 between [0, 1]
+    return resized   
