@@ -8,6 +8,7 @@ from tqdm import trange
 from config import get_config, print_usage
 from utils.preprocessing import package_data
 from layerutils import fcl, convl
+from tensorflow.contrib import rnn
 
 
 class Network:
@@ -62,6 +63,8 @@ class Network:
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
         self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
+        # self.lstm_X = tf.placeholder(tf.float32,  shape=(None, x_in_shp[0],x_in_shp[1]), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
+        # self.lstm_Y = tf.placeholder(tf.float32, shape=(), name="lstm_Y") #[None, self.config.num_class])
         self.batch_size = tf.shape(self.x_in)[0]
 
     def _build_preprocessing(self):
@@ -151,7 +154,7 @@ class Network:
                         weights, biases = weights_dict[op_name]
 
                     except:
-                        import IPython; IPython.embed()
+                        # import IPython; IPython.embed()
                         # Biases
                         var = tf.get_variable('biases', trainable=False)
                         sess.run(var.assign(biases))
@@ -220,8 +223,9 @@ class Network:
     def temporal_net(self, alex_output):
         flat_alex = tf.contrib.layers.flatten(alex_output)
         alex_and_movement = tf.concat([flat_alex, self.movement_values], 0)
-        lstm_1 = tf.keras.layers.lstm(alex_and_movement, 256)
-        lstm_2 = tf.keras.layers.lstm(lstm_1, 256)
+        # TODO: make it a list [alex_and_movement1, alex_and_movement2, ..]
+        # lstm_1 = tf.keras.layers.lstm(alex_and_movement, 256)
+        # lstm_2 = tf.keras.layers.lstm(lstm_1, 256)
 
     def _build_model(self):
         """Build Network."""
@@ -251,9 +255,32 @@ class Network:
             
             print("Shape After Reshape..", self.logits.shape)
 
+       
+
+            # lstm_out = self.LSTM(cur_in)
+            # prediction = tf.nn.softmax(lstm_out)
+            # print(prediction)
+            # TODO: calculate accuracy and loss
+
             self.kernels_list = [
                 _v for _v in tf.trainable_variables() if "kernel" in _v.name]         
 
+    def LSTM(self, X):
+        #num_classes = self.config.num_class
+        #straight, stop, left, right
+        num_classes = 4
+         # Define weights
+        weights = tf.Variable(tf.random_normal([self.config.num_hidden, num_classes]))
+        biases = tf.Variable(tf.random_normal([num_classes]))
+
+        # Lstm cell with tensorflow
+        lstm_cell = rnn.BasicLSTMCell(self.config.num_hidden, forget_bias=1.0)
+        # Get outputs
+        out, states = rnn.static_rnn(lstm_cell, X, dtype=tf.float32)
+        # Linear activation
+        activ = tf.matmul(out[-1], weights) + biases
+
+        return activ
 
     def train(self, x_tr, y_tr, x_va, y_va):
         """Training function.
@@ -507,6 +534,8 @@ def main(config):
     for row in data:
         x.append(row['frame-10s'][:])
         y.append(row['class_id'][:])
+    import IPython
+    IPython.embed()
 
     x = np.asarray(x)
     y = np.asarray(y)
@@ -522,6 +551,7 @@ def main(config):
    
     y_tr_labels = y_tr[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
     y_va_labels = y_va[:, :, :, 0]
+
     
     net = Network(x_tr.shape, config)
     net.train(x_tr, y_tr_labels, x_va, y_va_labels)
