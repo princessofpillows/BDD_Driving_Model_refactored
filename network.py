@@ -65,7 +65,8 @@ class Network:
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
         self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
-        self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.vid_shape[0], 2), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
+        # self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.e[0], 2), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
+        self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.vid_shape[0], 2), name="lstm_X")
         # self.lstm_Y = tf.placeholder(tf.float32, shape=(), name="lstm_Y") #[None, self.config.num_class])
         self.batch_size = tf.shape(self.x_in)[0]
 
@@ -169,9 +170,13 @@ class Network:
 
     def alexNet(self):
         print("Building Alexnet into the network...")
+        #reshappe input for alexnet
+        x_in = tf.reshape(self.x_in, ((self.x_shp[0]*self.x_shp[1]), self.x_shp[2], self.x_shp[3], self.x_shp[4]))
+        print("Shape of data going into AlexNet: ", x_in.shape)
         
         # Normalize using the above training-time statistics
-        cur_in = (self.x_in - self.n_mean) / self.n_range
+        # cur_in = (self.x_in - self.n_mean) / self.n_range
+        cur_in = (x_in - self.n_mean) / self.n_range
         print("Starting shape...", cur_in.shape)
 
         # 1st Layer Conv1
