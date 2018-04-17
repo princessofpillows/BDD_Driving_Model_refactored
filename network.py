@@ -10,6 +10,7 @@ from utils.preprocessing import package_data
 from utils.processInfo import downsample_json_to_video
 from layerutils import fcl, convl
 from tensorflow.contrib import rnn
+import IPython
 
 
 class Network:
@@ -72,11 +73,6 @@ class Network:
         """Build preprocessing related graph."""
 
         with tf.variable_scope("Normalization", reuse=tf.AUTO_REUSE):
-            # we will make `n_mean`, `n_range`, `n_mean_in` and
-            # `n_range_in` as scalar this time! This is how we often use in
-            # CNNs, as we KNOW that these are image pixels, and all pixels
-            # should be treated equally!
-
             # Create placeholders for saving mean, range to a TF variable for
             # easy save/load. Create these variables as well.
             self.n_mean_in = tf.placeholder(tf.float32, shape=())
@@ -239,6 +235,7 @@ class Network:
             cur_in = self.alexNet()
             print("Shape After alexnet..")
             print(cur_in.shape)
+            # reshape Alex net output
             
             self.preds = tf.contrib.layers.conv2d(cur_in, self.config.num_class, [1, 1],
                                    activation_fn=None,
@@ -255,11 +252,27 @@ class Network:
             )
             
             print("Shape After Reshape..", self.logits.shape)
+            #lstm_X is speed values
             lstm_flat = tf.reshape(self.lstm_X, [-1, 4])
             seg_flat = tf.reshape(self.logits, [-1, 4])# note maybe use 1st self.preds
+            # alex_and_movement = []
+            # for i in lstm_flat:
+            #     alex_and_movement.append(tf.concat(lstm_flat[i], seg_flat[i]))
+            # take curr_in and flatten 
             all_features = [lstm_flat, seg_flat]
+            lstm_in = []
+            IPython.embed()
+            for i in lstm_flat:
+                lstm_in.append(tf.concat(lstm_flat[i], seg_flat[i]))
+            #lstm should be (N, T, D) shape
+            #reshape ??
+            print(lstm_in)
+            IPython.embed()
+            tf.reshape(lstm_in, ())
+
             # all_features = tf.reshape(all_features, [-1, 4])
-            self.lstm_out = self.LSTM(all_features)
+            # self.lstm_out = self.LSTM(all_features)
+            self.lstm_out = self.LSTM(lstm_in)
             # prediction = tf.nn.softmax(lstm_out)
             # print(prediction)
             # TODO: calculate accuracy and loss
@@ -537,23 +550,36 @@ def main(config):
 
     nrows = len(data)
 
-    x = []
+    # x = []
     y = []
     vid_speed = []
+
+    #####
+    batches_x = []
     for row in data:
+        # IPython.embed()
         speed_data = row['info']
         video = row.get('video')
         if not video: continue # Video missing!?
         speed_data = downsample_json_to_video(video, speed_data)
-                
-        x.append(row['frame-10s'][:])
-        y.append(row['class_id'][:])
         vid_speed.append((video, speed_data))
-    
-    x = np.asarray(x)
+                
+        batch = []
+        batch.append(row['frame-10s'][:])
+        # x.append(row['frame-10s'][:])
+
+        ####### Batches
+        # current frame is the 30th so we want to consider the previous one
+        batch.append(row.get('video')[29])
+        batches_x.append(batch)
+        y.append(row['class_id'][:])
+
+    # x = np.asarray(x)
+    x = np.asarray(batches_x)
     y = np.asarray(y)
+    print('Batches input shape: ', x.shape)
     
-    assert len(x.shape) == 4, "Required: X is 4 tensor got %d." % len(x.shape)
+    assert len(x.shape) == 5, "Required: X is 5 tensor got %d." % len(x.shape)
     assert len(y.shape) == 4, "Required Y is 4 tensor got %d." % len(y.shape)
 
     x_tr = x[:nrows//2]
