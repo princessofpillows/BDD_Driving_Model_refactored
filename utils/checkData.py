@@ -8,6 +8,8 @@ from builtins import any
 
 def check_data(data_dir):
     '''
+    Author: Jordan Patterson
+    
     Function to check all relevant files in "data_dir" to ensure they are valid
 
     Parameters
@@ -90,6 +92,8 @@ def check_data(data_dir):
 
 def send_to_debug(data_dir, name):
     '''
+    Author: Jordan Patterson
+    
     Function to move all data with "name" to "debug" directory for debugging
 
     Parameters
@@ -117,3 +121,4 @@ def send_to_debug(data_dir, name):
         print('Warning: invalid path at ' + name)
     except FileExistsError:
         print("File already debugged: " + name)
+        

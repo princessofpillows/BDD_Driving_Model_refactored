@@ -9,6 +9,8 @@ from .checkData import send_to_debug
 
 def read_json(filename, num_frames, hz):
     '''
+    Author: Jordan Patterson
+
     Function to parse JSON info data and align with video
 
     Parameters
@@ -85,6 +87,8 @@ def read_json(filename, num_frames, hz):
 
 def check_info(info, locations):
     '''
+    Author: Jordan Patterson
+    
     Function to ensure json is valid
 
     Parameters

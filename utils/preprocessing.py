@@ -12,6 +12,8 @@ from .processInfo import read_json
 
 def package_data(data_dir):
     '''
+    Author: Jordan Patterson
+    
     Function to search directories for folders containing video data to write in HD5 format
 
     The directory in any "data_dir" path must contain folders:
@@ -133,10 +135,8 @@ def package_data(data_dir):
     # close file
     h5f.close()
 
+
 def _resize(image, dims=(244, 244, 3)):
     """Resize image to dims, preserve range (keep data from [0-255])"""
     return resize(image, dims, preserve_range=True)
-    
-    
-    
     

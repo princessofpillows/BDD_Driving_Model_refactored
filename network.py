@@ -1,4 +1,8 @@
 
+# Original base for network.py from Kwang Moo Yi for CSC486B/586B,
+# released under MIT license
+# Modified by Austin Hendy, Daria Sova, Maxwell Borden, and Jordan Patterson
+
 import os
 import h5py
 import numpy as np
@@ -21,7 +25,7 @@ class Network:
         # Build the network
         self._build_placeholder()
         self._build_preprocessing()
-#        self._load_initial_weights()
+        # self._load_initial_weights()
         self._build_model()
         self._build_loss()
         self._build_optim()
@@ -68,11 +72,6 @@ class Network:
         """Build preprocessing related graph."""
 
         with tf.variable_scope("Normalization", reuse=tf.AUTO_REUSE):
-            # we will make `n_mean`, `n_range`, `n_mean_in` and
-            # `n_range_in` as scalar this time! This is how we often use in
-            # CNNs, as we KNOW that these are image pixels, and all pixels
-            # should be treated equally!
-
             # Create placeholders for saving mean, range to a TF variable for
             # easy save/load. Create these variables as well.
             self.n_mean_in = tf.placeholder(tf.float32, shape=())
@@ -108,9 +107,7 @@ class Network:
 
         with tf.variable_scope("Eval", tf.AUTO_REUSE):
 
-            # Compute the accuracy of the model. When comparing labels
-            # elemwise, use tf.equal instead of `==`. `==` will evaluate if
-            # your Ops are identical Ops.#
+            # Compute the accuracy of the model
             self.pred = tf.argmax(self.logits, axis=3) # Argmax per pixel
             self.acc = tf.reduce_mean( 
                 tf.to_float(tf.equal(self.pred, self.y_in))
@@ -119,13 +116,11 @@ class Network:
             # Record summary for accuracy
             tf.summary.scalar("accuracy", self.acc)
 
-            # We also want to save best validation accuracy. So we do
-            # something similar to what we did before with n_mean. Note that
-            # these will also be a scalar variable
+            # save best validation accuracy
             self.best_va_acc_in = tf.placeholder(tf.float32, shape=())
             self.best_va_acc = tf.get_variable(
                 "best_va_acc", shape=(), trainable=False)
-            #Assign op to store this value to TF variable
+            # Assign op to store this value to TF variable
             self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)
 
     def _load_initial_weights(self, sess):
@@ -137,7 +132,7 @@ class Network:
         # load weights from the file
         weights_dict = np.load(self.config.weights_dir, encoding='bytes').item()
         # Loop over all layer names stored in the weights dict
-        #dict_keys(['fc6', 'fc7', 'fc8', 'conv3', 'conv2', 'conv1', 'conv5', 'conv4'])
+        # dict_keys(['fc6', 'fc7', 'fc8', 'conv3', 'conv2', 'conv1', 'conv5', 'conv4'])
         for op_name in weights_dict:
 
             # can define skips layer that will be trained fromscratch like this:
@@ -162,12 +157,12 @@ class Network:
                             
         print("Weights loaded.")
 
-###################
-###
-###    AlexNext implementation based on: https://github.com/kratzert/finetune_alexnet_with_tensorflow/blob/master/alexnet.py
-###
 
     def alexNet(self):
+        '''
+        AlexNext implementation based on: https://github.com/kratzert/finetune_alexnet_with_tensorflow/blob/master/alexnet.py
+        '''
+
         print("Building Alexnet into the network...")
         
         # Normalize using the above training-time statistics
@@ -276,9 +271,6 @@ class Network:
 
         # ----------------------------------------
         # Preprocess data
-
-        # We will simply use the data_mean for x_tr_mean, and 128 for the range
-        # as we are dealing with image and CNNs now
         x_tr_mean = x_tr.mean()
         x_tr_range = 128.0
 
@@ -331,16 +323,13 @@ class Network:
             # For each epoch
             for step in trange(step, max_iter):
 
-                # Get a random training batch. Notice that we are now going to
-                # forget about the `epoch` thing. Theoretically, they should do
-                # almost the same.
+                # Get a random training batch
                 ind_cur = np.random.choice(
                     len(x_tr), batch_size, replace=True)
                 x_b = np.array([x_tr[_i] for _i in ind_cur])
                 y_b = np.array([y_tr[_i] for _i in ind_cur])
 
-                # Write summary every N iterations as well as the first
-                # iteration. Use `self.config.report_freq`.
+                # Write summary every N iterations as well as the first iteration
                 K = self.config.report_freq
                 # records 0 % K or step=1
                 b_write_summary = step % K == 0 and step!=0 or step == 1
@@ -373,8 +362,7 @@ class Network:
                    )
                    self.summary_tr.flush()
 
-                   # Also save current model to resume when we write the
-                   # summary.
+                   # Also save current model to resume when we write the summary
                    self.saver_cur.save(
                        sess, self.save_file_cur,
                        global_step=self.global_step,
@@ -402,7 +390,7 @@ class Network:
                     self.summary_va.flush()
 
                     # If best validation accuracy, update W_best, b_best, and
-                    # best accuracy. We will only return the best W and b
+                    # best accuracy
                     if res["acc"] > best_acc:
                        best_acc = res["acc"]
                        # Write best acc to TF variable

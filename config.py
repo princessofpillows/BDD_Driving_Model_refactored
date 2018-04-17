@@ -1,6 +1,11 @@
 
-import argparse
+# Filename: config.py
+# Author: Kwang Moo Yi
+# Modifiers: Austin Hendy, Daria Sova, Maxwell Borden, and Jordan Patterson
+# Created: Mon Jan 15 12:08:58 2018 (-0800)
+# Copyright (C), Visual Computing Group @ University of Victoria.
 
+import argparse
 
 arg_lists = []
 parser = argparse.ArgumentParser()
