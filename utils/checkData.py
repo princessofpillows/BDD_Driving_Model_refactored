@@ -59,7 +59,7 @@ def check_data(data_dir):
 
     # find largest dataset to parse
     names = max(data, key=len)
-    index = data.index(videos)
+    index = data.index(names)
 
     # check that dataset is valid
     for name in range(len(names)):
@@ -115,3 +115,5 @@ def send_to_debug(data_dir, name):
         print('Warning: moving video ' + name + ' to', newpath)
     except FileNotFoundError:
         print('Warning: invalid path at ' + name)
+    except FileExistsError:
+        print("File already debugged: " + name)

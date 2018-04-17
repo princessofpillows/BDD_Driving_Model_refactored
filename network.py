@@ -511,14 +511,17 @@ def main(config):
     x = np.asarray(x)
     y = np.asarray(y)
     
+    assert len(x.shape) == 4, "X was not 4 tensor"
+    assert len(y.shape) == 4, "Y was not 4 tensor"
+
     x_tr = x[:nrows//2]
     x_va = x[nrows//2:]
 
     y_tr = y[:nrows//2]
     y_va = y[nrows//2:]
-    
-    y_tr_labels = y[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
-    y_va_labels = y[:, :, :, 0]
+   
+    y_tr_labels = y_tr[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
+    y_va_labels = y_va[:, :, :, 0]
     
     net = Network(x_tr.shape, config)
     net.train(x_tr, y_tr_labels, x_va, y_va_labels)

@@ -45,7 +45,7 @@ def package_data(data_dir):
     h5f = h5py.File('videoData.h5', 'a')
 
     # keep track of shortest video, and cut all videos to this length
-    min_frames = int(cv2.VideoCapture(str[videos[0]]).get(cv2.CAP_PROP_FRAME_COUNT))
+    min_frames = int(cv2.VideoCapture(str(videos[0])).get(cv2.CAP_PROP_FRAME_COUNT))
 
     # loops through all videos
     for i in tqdm(range(len(videos))):
@@ -84,7 +84,7 @@ def package_data(data_dir):
             
             # record frame at 3hz with downsampled resolution
             if int(count % hz) == 0:
-                frame = resize(frame, (640, 360, 3), preserve_range=True)
+                frame = _resize(frame)
                 videodata.append(frame)
 
             # count frames to ensure 3hz
@@ -104,12 +104,12 @@ def package_data(data_dir):
         instance_id_data = cv2.imread(str(instance_id[i]), 1)
         raw_images_data = cv2.imread(str(raw_images[i]), 1)
         # resize images
-        frame_data = resize(frame_data, (640, 360, 3))
-        class_colour_data = resize(class_colour_data, (640, 360, 3))
-        class_id_data = resize(class_id_data, (640, 360, 3))
-        instance_colour_data = resize(instance_colour_data, (640, 360, 3))
-        instance_id_data = resize(instance_id_data, (640, 360, 3))
-        raw_images_data = resize(raw_images_data, (640, 360, 3))
+        frame_data = _resize(frame_data)
+        class_colour_data = _resize(class_colour_data)
+        class_id_data = _resize(class_id_data)
+        instance_colour_data = _resize(instance_colour_data)
+        instance_id_data = _resize(instance_id_data)
+        raw_images_data = _resize(raw_images_data)
 
         # write group for videoname
         try:
@@ -132,3 +132,11 @@ def package_data(data_dir):
 
     # close file
     h5f.close()
+
+def _resize(image, dims=(244, 244, 3)):
+    """Resize image to dims, preserve range (keep data from [0-255])"""
+    return resize(image, dims, preserve_range=True)
+    
+    
+    
+    
