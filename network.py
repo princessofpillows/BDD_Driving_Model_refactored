@@ -7,18 +7,19 @@ from tqdm import trange
 
 from config import get_config, print_usage
 from utils.preprocessing import package_data
+from utils.processInfo import downsample_json_to_video
 from layerutils import fcl, convl
 from tensorflow.contrib import rnn
 
 
 class Network:
-    def __init__(self, x_shp, config):
+    def __init__(self, x_shp, config, vid_shape):
 
         self.config = config
 
         # Get shape
         self.x_shp = x_shp
-
+        self.vid_shape = vid_shape
         # Build the network
         self._build_placeholder()
         self._build_preprocessing()
@@ -63,7 +64,7 @@ class Network:
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
         self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
-        # self.lstm_X = tf.placeholder(tf.float32,  shape=(None, x_in_shp[0],x_in_shp[1]), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
+        self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.vid_shape[0], 2), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
         # self.lstm_Y = tf.placeholder(tf.float32, shape=(), name="lstm_Y") #[None, self.config.num_class])
         self.batch_size = tf.shape(self.x_in)[0]
 
@@ -239,7 +240,7 @@ class Network:
             print("Shape After alexnet..")
             print(cur_in.shape)
             
-            self.logits = tf.contrib.layers.conv2d(cur_in, self.config.num_class, [1, 1],
+            self.preds = tf.contrib.layers.conv2d(cur_in, self.config.num_class, [1, 1],
                                    activation_fn=None,
                                    padding="VALID",
                                    biases_initializer=None)
@@ -248,16 +249,17 @@ class Network:
             # Upscale logits to NWHC using nearest neighbor interpolation
             # turns (?,?,?, num_class) back to class scores for each pixel
             self.logits = tf.image.resize_images(
-                images=self.logits,
+                images=self.preds,
                 size=[yshps[1], yshps[2]], 
                 method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
             )
             
             print("Shape After Reshape..", self.logits.shape)
-
-       
-
-            # lstm_out = self.LSTM(cur_in)
+            lstm_flat = tf.reshape(self.lstm_X, [-1, 4])
+            seg_flat = tf.reshape(self.logits, [-1, 4])# note maybe use 1st self.preds
+            all_features = [lstm_flat, seg_flat]
+            # all_features = tf.reshape(all_features, [-1, 4])
+            self.lstm_out = self.LSTM(all_features)
             # prediction = tf.nn.softmax(lstm_out)
             # print(prediction)
             # TODO: calculate accuracy and loss
@@ -274,7 +276,9 @@ class Network:
         biases = tf.Variable(tf.random_normal([num_classes]))
 
         # Lstm cell with tensorflow
-        lstm_cell = rnn.BasicLSTMCell(self.config.num_hidden, forget_bias=1.0)
+        lstm = []
+        lstm_cell = rnn.BasicRNNCell(self.config.num_hidden)
+        lstm += [lstm_cell]
         # Get outputs
         out, states = rnn.static_rnn(lstm_cell, X, dtype=tf.float32)
         # Linear activation
@@ -282,7 +286,7 @@ class Network:
 
         return activ
 
-    def train(self, x_tr, y_tr, x_va, y_va):
+    def train(self, x_tr, y_tr, x_va, y_va, vid_speeds):
         """Training function.
 
         Parameters
@@ -314,6 +318,10 @@ class Network:
             x_tr_mean, x_tr.std(), x_tr.min(), x_tr.max()
         ))
 
+        # Unpack video, speeds
+        videos, speeds = zip(*vid_speeds) # Shapes: (NFWHC, NFD) F = frames
+        videos, speeds = np.asarray(videos), np.asarray(speeds)
+        
         # ----------------------------------------
         # Run TensorFlow Session
         with tf.Session() as sess:
@@ -531,17 +539,22 @@ def main(config):
 
     x = []
     y = []
+    vid_speed = []
     for row in data:
+        speed_data = row['info']
+        video = row.get('video')
+        if not video: continue # Video missing!?
+        speed_data = downsample_json_to_video(video, speed_data)
+                
         x.append(row['frame-10s'][:])
         y.append(row['class_id'][:])
-    import IPython
-    IPython.embed()
-
+        vid_speed.append((video, speed_data))
+    
     x = np.asarray(x)
     y = np.asarray(y)
     
-    assert len(x.shape) == 4, "X was not 4 tensor"
-    assert len(y.shape) == 4, "Y was not 4 tensor"
+    assert len(x.shape) == 4, "Required: X is 4 tensor got %d." % len(x.shape)
+    assert len(y.shape) == 4, "Required Y is 4 tensor got %d." % len(y.shape)
 
     x_tr = x[:nrows//2]
     x_va = x[nrows//2:]
@@ -553,8 +566,8 @@ def main(config):
     y_va_labels = y_va[:, :, :, 0]
 
     
-    net = Network(x_tr.shape, config)
-    net.train(x_tr, y_tr_labels, x_va, y_va_labels)
+    net = Network(x_tr.shape, config, vid_speed[0][0].shape)
+    net.train(x_tr, y_tr_labels, x_va, y_va_labels, vid_speed)
 
 
 if __name__ == "__main__":

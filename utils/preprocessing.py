@@ -45,8 +45,8 @@ def package_data(data_dir):
     h5f = h5py.File('videoData.h5', 'a')
 
     # keep track of shortest video, and cut all videos to this length
-    min_frames = int(cv2.VideoCapture(str(videos[0])).get(cv2.CAP_PROP_FRAME_COUNT))
-
+    framecount = lambda video: int(cv2.VideoCapture(str(video)).get(cv2.CAP_PROP_FRAME_COUNT))
+    min_frames = framecount(min(videos, key=framecount))
     # loops through all videos
     for i in tqdm(range(len(videos))):
         # gets name of video
@@ -63,17 +63,14 @@ def package_data(data_dir):
 
         # get video metrics
         fps = int(np.rint(video.get(cv2.CAP_PROP_FPS)))
-        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        # update shortest video
-        if total_frames < min_frames:
-            min_frames = total_frames
-        num_frames = int(np.rint(total_frames/fps))
+        total_frames = framecount(videos[i])
+        num_seconds = int(np.rint(total_frames/fps))
 
         videodata = []
         count = 0
         # set refresh rate to 3hz
         hz = fps / 3
-        
+
         # process video frame by frame
         while video.isOpened():
             # get frame of video
@@ -94,7 +91,7 @@ def package_data(data_dir):
         video.release()
         # get data ready to write
         video_data = np.asarray(videodata)
-        info_data = read_json(info[i], num_frames, hz)
+        info_data = read_json(info[i], total_frames, hz)
         if info_data is None:
             continue
         frame_data = cv2.imread(str(frames[i]), 1)

@@ -128,3 +128,11 @@ def check_info(info, locations):
         prev_t = cur_t
 
     return True
+
+def downsample_json_to_video(video, speed):
+    """Pair each frame to a corresponding speed vector based off prior downsample."""
+    n_speeds = speed.shape[0]
+    vid_frames =  video.shape[0]
+    sample_rate = n_speeds // video.shape[0]
+    speeds = speed[::sample_rate, :][:vid_frames] # In case uneven rate
+    return speeds
