@@ -134,5 +134,5 @@ def downsample_json_to_video(video, speed):
     n_speeds = speed.shape[0]
     vid_frames =  video.shape[0]
     sample_rate = n_speeds // video.shape[0]
-    speeds = speed[::sample_rate, :][:vid_frames] # In case uneven rate
+    speeds = speed[::sample_rate or 1, :][:vid_frames] # In case uneven rate
     return speeds

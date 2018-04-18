@@ -24,7 +24,6 @@ class Network:
         # Build the network
         self._build_placeholder()
         self._build_preprocessing()
-#        self._load_initial_weights()
         self._build_model()
         self._build_loss()
         self._build_optim()
@@ -65,9 +64,7 @@ class Network:
         self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
         self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
-        # self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.e[0], 2), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
         self.lstm_speed = tf.placeholder(tf.float32,  shape=self.vid_shape, name="lstm_speed")
-        # self.lstm_Y = tf.placeholder(tf.float32, shape=(), name="lstm_Y") #[None, self.config.num_class])
         self.batch_size = tf.shape(self.x_in)[0]
 
     def _build_preprocessing(self):
@@ -109,9 +106,7 @@ class Network:
 
         with tf.variable_scope("Eval", tf.AUTO_REUSE):
 
-            # Compute the accuracy of the model. When comparing labels
-            # elemwise, use tf.equal instead of `==`. `==` will evaluate if
-            # your Ops are identical Ops.#
+            # Compute the accuracy of the model.
             self.pred = tf.argmax(self.logits, axis=3) # Argmax per pixel
             self.acc = tf.reduce_mean( 
                 tf.to_float(tf.equal(self.pred, self.y_in))
@@ -152,7 +147,6 @@ class Network:
                         weights, biases = weights_dict[op_name]
 
                     except:
-                        # import IPython; IPython.embed()
                         # Biases
                         var = tf.get_variable('biases', trainable=False)
                         sess.run(var.assign(biases))
@@ -222,13 +216,6 @@ class Network:
         print("AlexNet Done.")
         return cur_in
 
-    # def temporal_net(self, alex_output):
-        # flat_alex = tf.contrib.layers.flatten(alex_output)
-        # alex_and_movement = tf.concat([flat_alex, self.movement_values], 0)
-        # TODO: make it a list [alex_and_movement1, alex_and_movement2, ..]
-        # lstm_1 = tf.keras.layers.lstm(alex_and_movement, 256)
-        # lstm_2 = tf.keras.layers.lstm(lstm_1, 256)
-
     def _build_model(self):
         """Build Network."""
 
@@ -258,25 +245,26 @@ class Network:
             
             print("Shape After Reshape..", self.logits.shape)
 
-            ### LSTM PART
+            # LSTM part
+
             lstm_in_AlexNet = tf.reshape(cur_in, (self.x_shp[0], self.x_shp[1], -1))
             print("LSTM input from AlexNet shape: ", lstm_in_AlexNet.shape)
 
             # put speed data together
-            #lstm should be (N, T, D) shape
-            IPython.embed()
+            # lstm input should be (N, T, D) shape
             lstm_in_alex_and_movements = tf.concat([lstm_in_AlexNet, self.lstm_speed], axis=-1)
-            lstm_out = self.LSTM(lstm_in_alex_and_movements)
+            lstm_out = self.LSTM([lstm_in_alex_and_movements])
             print("LSTM output shape: ", lstm_out)
 
             self.kernels_list = [
                 _v for _v in tf.trainable_variables() if "kernel" in _v.name]         
 
     def LSTM(self, X):
-        #num_classes = self.config.num_class
+        print("Running LSTM...")
+        #TODO: num_classes = self.config.num_class
         #straight, stop, left, right
         num_classes = 4
-         # Define weights
+        # Define weights
         weights = tf.Variable(tf.random_normal([self.config.num_hidden, num_classes]))
         biases = tf.Variable(tf.random_normal([num_classes]))
 
