@@ -49,6 +49,7 @@ def package_data(data_dir):
     # keep track of shortest video, and cut all videos to this length
     framecount = lambda video: int(cv2.VideoCapture(str(video)).get(cv2.CAP_PROP_FRAME_COUNT))
     min_frames = framecount(min(videos, key=framecount))
+
     # loops through all videos
     for i in tqdm(range(len(videos))):
         # gets name of video
@@ -63,10 +64,8 @@ def package_data(data_dir):
             send_to_debug(data_dir, name)
             continue
 
-        # get video metrics
+        # get framerate
         fps = int(np.rint(video.get(cv2.CAP_PROP_FPS)))
-        total_frames = framecount(videos[i])
-        num_seconds = int(np.rint(total_frames/fps))
 
         videodata = []
         count = 0
@@ -77,10 +76,11 @@ def package_data(data_dir):
         while video.isOpened():
             # get frame of video
             ret, frame = cv2.VideoCapture.read(video)
+                
             # check if we have reached end of video
             if ret != True or count == min_frames:
                 break
-            
+
             # record frame at 3hz with downsampled resolution
             if int(count % hz) == 0:
                 frame = _resize(frame)
@@ -93,7 +93,7 @@ def package_data(data_dir):
         video.release()
         # get data ready to write
         video_data = np.asarray(videodata)
-        info_data = read_json(info[i], total_frames, hz)
+        info_data = read_json(info[i], min_frames, hz)
         if info_data is None:
             continue
         frame_data = cv2.imread(str(frames[i]), 1)
@@ -133,7 +133,7 @@ def package_data(data_dir):
     h5f.close()
 
 
-def _resize(image, dims=(244, 244, 3)):
+def _resize(image, dims=(640, 360, 3)):
     """Resize image to dims, preserve range (keep data from [0-255])"""
     return resize(image, dims, preserve_range=True)
     

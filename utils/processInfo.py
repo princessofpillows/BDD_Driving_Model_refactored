@@ -51,6 +51,7 @@ def read_json(filename, num_frames, hz):
 
     frame_velocity = np.zeros((num_frames, 2), dtype=np.float32)
     t_prev = 0
+    
     # get velocity at current frame
     for frame in range(num_frames):
         # get current time in timestamp (location data is collected every second)
@@ -81,6 +82,9 @@ def read_json(filename, num_frames, hz):
             r2 = t1 / (t1 + t2)
             # get current velocity between two timestamps
             frame_velocity[frame, :] = r1 * velocity[t_prev, :] + r2 * velocity[t_next, :]
+
+    # align with framerate (3hz)
+    frame_velocity = frame_velocity[::3, :]
 
     return frame_velocity
 
@@ -132,11 +136,3 @@ def check_info(info, locations):
         prev_t = cur_t
 
     return True
-
-def downsample_json_to_video(video, speed):
-    """Pair each frame to a corresponding speed vector based off prior downsample."""
-    n_speeds = speed.shape[0]
-    vid_frames =  video.shape[0]
-    sample_rate = n_speeds // video.shape[0]
-    speeds = speed[::sample_rate or 1, :][:vid_frames] # In case uneven rate
-    return speeds

@@ -3,18 +3,15 @@
 # released under MIT license
 # Modified by Austin Hendy, Daria Sova, Maxwell Borden, and Jordan Patterson
 
-import os
-import h5py
+import os, h5py, IPython
 import numpy as np
 import tensorflow as tf
 from tqdm import trange
 
 from config import get_config, print_usage
 from utils.preprocessing import package_data
-from utils.processInfo import downsample_json_to_video
 from layerutils import fcl, convl
 from tensorflow.contrib import rnn
-import IPython
 
 
 class Network:
@@ -129,9 +126,11 @@ class Network:
             self.acc_assign_op = tf.assign(self.best_va_acc, self.best_va_acc_in)
 
     def _load_initial_weights(self, sess):
-        """Load weights from a file into network.
+        '''
+        Load weights from a file into network.
         Weights taken from http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/
-        It is a dict of lists """
+        It is a dict of lists 
+        '''
 
         print("Loading pretrained weights for Alexnet...")
         # load weights from the file
@@ -140,8 +139,6 @@ class Network:
         # dict_keys(['fc6', 'fc7', 'fc8', 'conv3', 'conv2', 'conv1', 'conv5', 'conv4'])
         for op_name in weights_dict:
 
-            # can define skips layer that will be trained fromscratch like this:
-            # if op_name not in self.SKIP_LAYER:
             with tf.variable_scope("Network", reuse=True):
 
                 with tf.variable_scope(op_name, reuse=True):
@@ -168,23 +165,20 @@ class Network:
         '''
 
         print("Building Alexnet into the network...")
-        #reshappe input for alexnet
+        # reshape input for alexnet
         print("Shape of data going into AlexNet: ", x_in.shape)
         
         # Normalize using the above training-time statistics
-        # cur_in = (self.seg_x - self.n_mean) / self.n_range
         cur_in = (x_in - self.n_mean) / self.n_range
         print("Starting shape...", cur_in.shape)
 
         # 1st Layer Conv1
         cur_in = convl(cur_in, 11, 11, 96, 4, 4, padding='VALID', name='conv1')
-        cur_in = tf.contrib.layers.max_pool2d(cur_in,
-                                            [3, 3], 2, padding='VALID')
+        cur_in = tf.contrib.layers.max_pool2d(cur_in, [3, 3], 2, padding='VALID')
 
         # 2nd Layer Conv2
         cur_in = convl(cur_in, 5, 5, 256, 1, 1, groups=2, name='conv2')
-        cur_in = tf.contrib.layers.max_pool2d(cur_in,
-                                              [3, 3], 2, padding='VALID')
+        cur_in = tf.contrib.layers.max_pool2d(cur_in, [3, 3], 2, padding='VALID')
 
         # 3rd Layer Conv3
         cur_in = convl(cur_in, 3, 3, 384, 1, 1, name='conv3')
@@ -200,14 +194,12 @@ class Network:
         # Fully connected layers with conv
         cur_in = convl(cur_in, 6, 6, 4096, 1, 1,  padding='VALID', name='fc6')
 
-        cur_in = tf.contrib.layers.dropout(cur_in,
-                                    0.3, is_training=True)
+        cur_in = tf.contrib.layers.dropout(cur_in, 0.3, is_training=True)
 
         # 8th Layer: FC (w ReLu) -> Dropout (as conv layer)
         cur_in = convl(cur_in, 1, 1, 4096, 1, 1,  padding='VALID', name='fc7')
 
-        cur_in = tf.contrib.layers.dropout(cur_in,
-                                    0.3, is_training=True)
+        cur_in = tf.contrib.layers.dropout(cur_in, 0.3, is_training=True)
         print("Starting shape...", cur_in.shape)
 
         # 8th Layer: FC and return unscaled activations
@@ -523,30 +515,31 @@ def main(config):
         """
         data.append(f[group])
 
-    n_rows = len(data)
+    num_videos = len(data)
 
-    y = []
+    # frame data and labels
     x = []
+    y = []
 
+    # contains previous frames
     lstm_x = []
     lstm_y = []
 
-    # speed data
+    # speed data and labels
     speed_x = []
     speed_y = []
 
+    # iterate through videos
     for row in data:
-        speed_data = row['info']
-        video = row.get('video')
-        if not video:
-            continue
-        speed_data = downsample_json_to_video(video, speed_data)
+        video = row['video']
+        vector = row['info']
 
         x.append(row['frame-10s'][:])
         y.append(row['class_id'][:])
-                
+
         batch = []
-        # current frame is the 30th so we want to consider two previous ones
+        # current frame is the 30th so we want to also consider several previous ones
+        # this is because the original project uses ffmpeg to get the 10s frame, which means its likely interpolated
         batch.append(video[29])
         batch.append(video[28])
         lstm_x.append(batch)
@@ -554,16 +547,17 @@ def main(config):
 
         # motion data for lstm
         speed_batch = []
-        speed_batch.append(speed_data[29])
-        speed_batch.append(speed_data[28])
+        speed_batch.append(vector[29])
+        speed_batch.append(vector[28])
         speed_x.append(speed_batch)
-        speed_y.append(speed_data[30])
+        speed_y.append(vector[30])
 
 
-    lstm_x = np.asarray(lstm_x)
-    lstm_y = np.asarray(lstm_y) 
+    # convert to np arrays
     x = np.asarray(x)
     y = np.asarray(y)
+    lstm_x = np.asarray(lstm_x)
+    lstm_y = np.asarray(lstm_y)
     speed_x = np.asarray(speed_x)
     speed_y = np.asarray(speed_y)
 
@@ -576,9 +570,9 @@ def main(config):
 
     assert len(lstm_x.shape) == 5, "Required: X is 5 tensor got %d." % len(lstm_x.shape)
 
-    # 70% train, 20% val, 10% test
-    train_split = int(n_rows * 0.7)
-    val_split = int(n_rows * 0.2) + train_split
+    # 70% train, 20% val, 10% test split
+    train_split = int(num_videos * 0.7)
+    val_split = int(num_videos * 0.2) + train_split
 
     x_tr = x[:train_split]
     x_va = x[train_split:val_split]
