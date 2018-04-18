@@ -523,7 +523,7 @@ def main(config):
         """
         data.append(f[group])
 
-    nrows = len(data)
+    n_rows = len(data)
 
     y = []
     x = []
@@ -576,29 +576,45 @@ def main(config):
 
     assert len(lstm_x.shape) == 5, "Required: X is 5 tensor got %d." % len(lstm_x.shape)
 
-    x_tr = x[:nrows//2]
-    x_va = x[nrows//2:]
+    # 70% train, 20% val, 10% test
+    train_split = int(n_rows * 0.7)
+    val_split = int(n_rows * 0.2) + train_split
 
-    lstm_x_tr = lstm_x[:nrows//2]
-    lstm_x_va = lstm_x[nrows//2:]
+    x_tr = x[:train_split]
+    x_va = x[train_split:val_split]
+    x_te = x[val_split:]
 
-    lstm_y_tr = lstm_y[:nrows//2]
-    lstm_y_va = lstm_y[nrows//2:]
+    lstm_x_tr = lstm_x[:train_split]
+    lstm_x_va = lstm_x[train_split:val_split]
+    lstm_x_te = lstm_x[val_split:]
 
-    y_tr = y[:nrows//2]
-    y_va = y[nrows//2:]
+    lstm_y_tr = lstm_y[:train_split]
+    lstm_y_va = lstm_y[train_split:val_split]
+    lstm_y_te = lstm_y[val_split:]
+
+    y_tr = y[:train_split]
+    y_va = y[train_split:val_split]
+    y_te = y[val_split:]
    
-    y_tr_labels = y_tr[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
+    # Each label is pixel of [class_id, class_id, class_id]
+    y_tr_labels = y_tr[:, :, :, 0]
     y_va_labels = y_va[:, :, :, 0]
+    y_te_labels = y_te[:, :, :, 0]
 
-    speed_x_tr = speed_x[:nrows//2]
-    speed_x_va = speed_x[nrows//2:]
+    speed_x_tr = speed_x[:train_split]
+    speed_x_va = speed_x[train_split:val_split]
+    speed_x_te = speed_x[val_split:]
 
-    speed_y_tr = speed_y[:nrows//2]
-    speed_y_va = speed_y[nrows//2:]
+    speed_y_tr = speed_y[:train_split]
+    speed_y_va = speed_y[train_split:val_split]
+    speed_y_te = speed_y[val_split:]
     
+    # build network
     net = Network(x_tr.shape, lstm_x_tr.shape, config, speed_x_tr.shape)
+    # train on train/val data
     net.train(x_tr, y_tr_labels, x_va, y_va_labels, speed_x_tr)
+    # test on test data
+    net.test(x_te, y_te_labels)
 
 
 if __name__ == "__main__":
