@@ -66,7 +66,7 @@ class Network:
         self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
         self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
         # self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.e[0], 2), name="lstm_X") #[None, timesteps, x_in_shp[:-1]])
-        self.lstm_X = tf.placeholder(tf.float32,  shape=(None, self.vid_shape[0], 2), name="lstm_X")
+        self.lstm_speed = tf.placeholder(tf.float32,  shape=self.vid_shape, name="lstm_speed")
         # self.lstm_Y = tf.placeholder(tf.float32, shape=(), name="lstm_Y") #[None, self.config.num_class])
         self.batch_size = tf.shape(self.x_in)[0]
 
@@ -222,9 +222,9 @@ class Network:
         print("AlexNet Done.")
         return cur_in
 
-    def temporal_net(self, alex_output):
-        flat_alex = tf.contrib.layers.flatten(alex_output)
-        alex_and_movement = tf.concat([flat_alex, self.movement_values], 0)
+    # def temporal_net(self, alex_output):
+        # flat_alex = tf.contrib.layers.flatten(alex_output)
+        # alex_and_movement = tf.concat([flat_alex, self.movement_values], 0)
         # TODO: make it a list [alex_and_movement1, alex_and_movement2, ..]
         # lstm_1 = tf.keras.layers.lstm(alex_and_movement, 256)
         # lstm_2 = tf.keras.layers.lstm(lstm_1, 256)
@@ -257,30 +257,17 @@ class Network:
             )
             
             print("Shape After Reshape..", self.logits.shape)
-            #lstm_X is speed values
-            lstm_flat = tf.reshape(self.lstm_X, [-1, 4])
-            seg_flat = tf.reshape(self.logits, [-1, 4])# note maybe use 1st self.preds
-            # alex_and_movement = []
-            # for i in lstm_flat:
-            #     alex_and_movement.append(tf.concat(lstm_flat[i], seg_flat[i]))
-            # take curr_in and flatten 
-            all_features = [lstm_flat, seg_flat]
-            lstm_in = []
-            IPython.embed()
-            for i in lstm_flat:
-                lstm_in.append(tf.concat(lstm_flat[i], seg_flat[i]))
-            #lstm should be (N, T, D) shape
-            #reshape ??
-            print(lstm_in)
-            IPython.embed()
-            tf.reshape(lstm_in, ())
 
-            # all_features = tf.reshape(all_features, [-1, 4])
-            # self.lstm_out = self.LSTM(all_features)
-            self.lstm_out = self.LSTM(lstm_in)
-            # prediction = tf.nn.softmax(lstm_out)
-            # print(prediction)
-            # TODO: calculate accuracy and loss
+            ### LSTM PART
+            lstm_in_AlexNet = tf.reshape(cur_in, (self.x_shp[0], self.x_shp[1], -1))
+            print("LSTM input from AlexNet shape: ", lstm_in_AlexNet.shape)
+
+            # put speed data together
+            #lstm should be (N, T, D) shape
+            IPython.embed()
+            lstm_in_alex_and_movements = tf.concat([lstm_in_AlexNet, self.lstm_speed], axis=-1)
+            lstm_out = self.LSTM(lstm_in_alex_and_movements)
+            print("LSTM output shape: ", lstm_out)
 
             self.kernels_list = [
                 _v for _v in tf.trainable_variables() if "kernel" in _v.name]         
@@ -555,33 +542,34 @@ def main(config):
 
     nrows = len(data)
 
-    # x = []
     y = []
-    vid_speed = []
 
-    #####
     batches_x = []
+    batches_speed_data = []
     for row in data:
-        # IPython.embed()
         speed_data = row['info']
         video = row.get('video')
         if not video: continue # Video missing!?
         speed_data = downsample_json_to_video(video, speed_data)
-        vid_speed.append((video, speed_data))
                 
+        # current frame is the 30th so we want to consider the previous one
         batch = []
         batch.append(row['frame-10s'][:])
-        # x.append(row['frame-10s'][:])
-
-        ####### Batches
         # current frame is the 30th so we want to consider the previous one
-        batch.append(row.get('video')[29])
+        batch.append(video[29])
         batches_x.append(batch)
         y.append(row['class_id'][:])
 
-    # x = np.asarray(x)
+        # motion data for lstm
+        speed_batch = []
+        speed_batch.append(speed_data[30])
+        speed_batch.append(speed_data[29])
+        batches_speed_data.append(speed_batch)
+
+
     x = np.asarray(batches_x)
     y = np.asarray(y)
+    speed_data = np.asarray(batches_speed_data)
     print('Batches input shape: ', x.shape)
     
     assert len(x.shape) == 5, "Required: X is 5 tensor got %d." % len(x.shape)
@@ -596,9 +584,12 @@ def main(config):
     y_tr_labels = y_tr[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
     y_va_labels = y_va[:, :, :, 0]
 
+    speed_data_tr = speed_data[:nrows//2]
+    speed_data_va = speed_data[nrows//2:]
+
     
-    net = Network(x_tr.shape, config, vid_speed[0][0].shape)
-    net.train(x_tr, y_tr_labels, x_va, y_va_labels, vid_speed)
+    net = Network(x_tr.shape, config, speed_data_tr.shape)
+    net.train(x_tr, y_tr_labels, x_va, y_va_labels, speed_data_tr)
 
 
 if __name__ == "__main__":
