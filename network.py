@@ -253,11 +253,15 @@ class Network:
             # put speed data together
             # lstm input should be (N, T, D) shape
             lstm_in_alex_and_movements = tf.concat([lstm_in_AlexNet, self.lstm_speed], axis=-1)
-            lstm_out = self.LSTM([lstm_in_alex_and_movements])
-            print("LSTM output shape: ", lstm_out)
+
+            #lstm_out = self.LSTM([lstm_in_alex_and_movements])
+            lstm_out2= tf.keras.layers.LSTM(lstm_in_alex_and_movements)
+            lstm_out3= tf.keras.layers.LSTM(lstm_out2)
+            print("LSTM output shape: ", lstm_out3)
 
             self.kernels_list = [
                 _v for _v in tf.trainable_variables() if "kernel" in _v.name]         
+                
 
     def LSTM(self, X):
         print("Running LSTM...")
