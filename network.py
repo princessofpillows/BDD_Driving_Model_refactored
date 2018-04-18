@@ -14,13 +14,14 @@ import IPython
 
 
 class Network:
-    def __init__(self, x_shp, config, vid_shape):
+    def __init__(self, x_shp, lstm_x_shp, config, speed_x_shp):
 
         self.config = config
 
         # Get shape
         self.x_shp = x_shp
-        self.vid_shape = vid_shape
+        self.lstm_x_shp = lstm_x_shp
+        self.speed_x_shp = speed_x_shp
         # Build the network
         self._build_placeholder()
         self._build_preprocessing()
@@ -61,11 +62,12 @@ class Network:
         # Get shape for placeholder
         x_in_shp = (None, *self.x_shp[1:])
         # Create Placeholders for inputs
-        self.x_in = tf.placeholder(tf.float32, shape=x_in_shp, name="X_in")
-        self.y_in = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="Y_in")
+        self.seg_x = tf.placeholder(tf.float32, shape=x_in_shp, name="seg_x_in")
+        self.seg_y = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="seg_y_in")
         self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
-        self.lstm_speed = tf.placeholder(tf.float32,  shape=self.vid_shape, name="lstm_speed")
-        self.batch_size = tf.shape(self.x_in)[0]
+        self.lstm_x = tf.placeholder(tf.float32, shape=self.lstm_x_shp, name="lstm_x_in")
+        self.lstm_y = tf.placeholder(tf.float32, shape=x_in_shp[:-1], name="lstm_y_in")
+        self.lstm_speed_x = tf.placeholder(tf.float32,  shape=self.speed_x_shp, name="lstm_speed")
 
     def _build_preprocessing(self):
         """Build preprocessing related graph."""
@@ -109,7 +111,7 @@ class Network:
             # Compute the accuracy of the model.
             self.pred = tf.argmax(self.logits, axis=3) # Argmax per pixel
             self.acc = tf.reduce_mean( 
-                tf.to_float(tf.equal(self.pred, self.y_in))
+                tf.to_float(tf.equal(self.pred, self.seg_y))
             )
 
             # Record summary for accuracy
@@ -162,14 +164,13 @@ class Network:
 ###    AlexNext implementation based on: https://github.com/kratzert/finetune_alexnet_with_tensorflow/blob/master/alexnet.py
 ###
 
-    def alexNet(self):
+    def alexNet(self, x_in):
         print("Building Alexnet into the network...")
         #reshappe input for alexnet
-        x_in = tf.reshape(self.x_in, ((self.x_shp[0]*self.x_shp[1]), self.x_shp[2], self.x_shp[3], self.x_shp[4]))
         print("Shape of data going into AlexNet: ", x_in.shape)
         
         # Normalize using the above training-time statistics
-        # cur_in = (self.x_in - self.n_mean) / self.n_range
+        # cur_in = (self.seg_x - self.n_mean) / self.n_range
         cur_in = (x_in - self.n_mean) / self.n_range
         print("Starting shape...", cur_in.shape)
 
@@ -222,14 +223,16 @@ class Network:
         # Build the network (use tf.layers)
         with tf.variable_scope("Network", reuse=tf.AUTO_REUSE):
             # Normalize using the above training-time statistics
-            yshps = [x.value for x in self.y_in.get_shape()]
+            yshps = [x.value for x in self.seg_y.get_shape()]
 
-            cur_in = self.alexNet()
+            alex_in = tf.reshape(self.lstm_x, ((self.lstm_x_shp[0]*self.lstm_x_shp[1]), self.lstm_x_shp[2], self.lstm_x_shp[3], self.lstm_x_shp[4]))
+            cur_in_lstm = self.alexNet(alex_in)
+            cur_in_seg = self.alexNet(self.seg_x)
             print("Shape After alexnet..")
-            print(cur_in.shape)
+            print(cur_in_lstm.shape)
             # reshape Alex net output
             
-            self.preds = tf.contrib.layers.conv2d(cur_in, self.config.num_class, [1, 1],
+            self.preds = tf.contrib.layers.conv2d(cur_in_seg, self.config.num_class, [1, 1],
                                    activation_fn=None,
                                    padding="VALID",
                                    biases_initializer=None)
@@ -247,12 +250,12 @@ class Network:
 
             # LSTM part
 
-            lstm_in_AlexNet = tf.reshape(cur_in, (self.x_shp[0], self.x_shp[1], -1))
+            lstm_in_AlexNet = tf.reshape(cur_in_lstm, (self.lstm_x_shp[0], self.lstm_x_shp[1], -1))
             print("LSTM input from AlexNet shape: ", lstm_in_AlexNet.shape)
 
             # put speed data together
             # lstm input should be (N, T, D) shape
-            lstm_in_alex_and_movements = tf.concat([lstm_in_AlexNet, self.lstm_speed], axis=-1)
+            lstm_in_alex_and_movements = tf.concat([lstm_in_AlexNet, self.lstm_speed_x], axis=-1)
 
             #lstm_out = self.LSTM([lstm_in_alex_and_movements])
             lstm_out2= tf.keras.layers.LSTM(lstm_in_alex_and_movements)
@@ -393,8 +396,8 @@ class Network:
                 res = sess.run(
                     fetches=fetches,
                     feed_dict={
-                        self.x_in: x_b,
-                        self.y_in: y_b,
+                        self.seg_x: x_b,
+                        self.seg_y: y_b,
                     },
                 )
 
@@ -424,8 +427,8 @@ class Network:
                            "global_step": self.global_step,
                         },
                         feed_dict={
-                           self.x_in: x_va,
-                           self.y_in: y_va,
+                           self.seg_x: x_va,
+                           self.seg_y: y_va,
                         })
                     # Write Validation Summary
                     self.summary_va.add_summary(
@@ -468,8 +471,8 @@ class Network:
                     "acc": self.acc,
                 },
                 feed_dict={
-                    self.x_in: x_te,
-                    self.y_in: y_te,
+                    self.seg_x: x_te,
+                    self.seg_y: y_te,
                 },
             )
 
@@ -483,10 +486,10 @@ class Network:
 
         with tf.variable_scope("Loss", reuse=tf.AUTO_REUSE):
             pred_shape = [x.value for x in self.logits.get_shape()]
-            seg_shape = [x.value for x in self.y_in.get_shape()]
+            seg_shape = [x.value for x in self.seg_y.get_shape()]
 
             preds = tf.reshape(self.logits, [-1, pred_shape[3]])
-            seg = tf.reshape(self.y_in, [-1])
+            seg = tf.reshape(self.seg_y, [-1])
 
             # Create cross entropy loss
             self.loss = tf.reduce_mean(
@@ -535,40 +538,64 @@ def main(config):
     nrows = len(data)
 
     y = []
+    x = []
 
-    batches_x = []
-    batches_speed_data = []
+    lstm_x = []
+    lstm_y = []
+
+    # speed data
+    speed_x = []
+    speed_y = []
+
     for row in data:
         speed_data = row['info']
         video = row.get('video')
         if not video: continue # Video missing!?
         speed_data = downsample_json_to_video(video, speed_data)
-                
-        # current frame is the 30th so we want to consider the previous one
-        batch = []
-        batch.append(row['frame-10s'][:])
-        # current frame is the 30th so we want to consider the previous one
-        batch.append(video[29])
-        batches_x.append(batch)
+
+        x.append(row['frame-10s'][:])
         y.append(row['class_id'][:])
+                
+        batch = []
+        # current frame is the 30th so we want to consider two previous ones
+        batch.append(video[29])
+        batch.append(video[28])
+        lstm_x.append(batch)
+        lstm_y.append(row['frame-10s'][:])
 
         # motion data for lstm
         speed_batch = []
-        speed_batch.append(speed_data[30])
         speed_batch.append(speed_data[29])
-        batches_speed_data.append(speed_batch)
+        speed_batch.append(speed_data[28])
+        speed_x.append(speed_batch)
+        speed_y.append(speed_data[30])
 
 
-    x = np.asarray(batches_x)
+    lstm_x = np.asarray(lstm_x)
+    lstm_y = np.asarray(lstm_y) 
+    x = np.asarray(x)
     y = np.asarray(y)
-    speed_data = np.asarray(batches_speed_data)
-    print('Batches input shape: ', x.shape)
+    speed_x = np.asarray(speed_x)
+    speed_y = np.asarray(speed_y)
+
+    print('Segmentation input shape: ', x.shape)
+    print('LSTM X input shape: ', lstm_x.shape)
+    print('Speed data input shape: ', speed_x.shape)
     
-    assert len(x.shape) == 5, "Required: X is 5 tensor got %d." % len(x.shape)
+    assert len(x.shape) == 4, "Required: X is 4 tensor got %d." % len(x.shape)
     assert len(y.shape) == 4, "Required Y is 4 tensor got %d." % len(y.shape)
+
+    assert len(lstm_x.shape) == 5, "Required: X is 5 tensor got %d." % len(lstm_x.shape)
+    # assert len(speed_y.shape) == 4, "Required Y is 4 tensor got %d." % len(speed_y.shape)
 
     x_tr = x[:nrows//2]
     x_va = x[nrows//2:]
+
+    lstm_x_tr = lstm_x[:nrows//2]
+    lstm_x_va = lstm_x[nrows//2:]
+
+    lstm_y_tr = lstm_y[:nrows//2]
+    lstm_y_va = lstm_y[nrows//2:]
 
     y_tr = y[:nrows//2]
     y_va = y[nrows//2:]
@@ -576,12 +603,14 @@ def main(config):
     y_tr_labels = y_tr[:, :, :, 0] # Each label is pixel of [class_id, class_id, class_id]
     y_va_labels = y_va[:, :, :, 0]
 
-    speed_data_tr = speed_data[:nrows//2]
-    speed_data_va = speed_data[nrows//2:]
+    speed_x_tr = speed_x[:nrows//2]
+    speed_x_va = speed_x[nrows//2:]
 
+    speed_y_tr = speed_y[:nrows//2]
+    speed_y_va = speed_y[nrows//2:]
     
-    net = Network(x_tr.shape, config, speed_data_tr.shape)
-    net.train(x_tr, y_tr_labels, x_va, y_va_labels, speed_data_tr)
+    net = Network(x_tr.shape, lstm_x_tr.shape, config, speed_x_tr.shape)
+    net.train(x_tr, y_tr_labels, x_va, y_va_labels, speed_x_tr)
 
 
 if __name__ == "__main__":
