@@ -159,12 +159,12 @@ class Network:
                             
         print("Weights loaded.")
 
-###################
-###
-###    AlexNext implementation based on: https://github.com/kratzert/finetune_alexnet_with_tensorflow/blob/master/alexnet.py
-###
 
     def alexNet(self, x_in):
+        '''
+        AlexNext implementation based on: https://github.com/kratzert/finetune_alexnet_with_tensorflow/blob/master/alexnet.py
+        '''
+
         print("Building Alexnet into the network...")
         #reshappe input for alexnet
         print("Shape of data going into AlexNet: ", x_in.shape)
@@ -192,10 +192,6 @@ class Network:
 
         # 5th Layer Conv5
         cur_in = convl(cur_in, 3, 3, 256, 1, 1, groups=2, name='conv5')
-
-#        # TODO: Decide to use this layer
-#        cur_in = tf.contrib.layers.max_pool2d(cur_in,
-#                                              [3, 3], 2, padding='VALID')
         
         cur_in = tf.contrib.layers.dropout(cur_in,
                                     0.3, is_training=True)
@@ -268,8 +264,7 @@ class Network:
 
     def LSTM(self, X):
         print("Running LSTM...")
-        #TODO: num_classes = self.config.num_class
-        #straight, stop, left, right
+        # straight, stop, left, right
         num_classes = 4
         # Define weights
         weights = tf.Variable(tf.random_normal([self.config.num_hidden, num_classes]))
@@ -307,9 +302,6 @@ class Network:
 
         # ----------------------------------------
         # Preprocess data
-
-        # We will simply use the data_mean for x_tr_mean, and 128 for the range
-        # as we are dealing with image and CNNs now
         x_tr_mean = x_tr.mean()
         x_tr_range = 128.0
 
@@ -366,18 +358,14 @@ class Network:
             # For each epoch
             for step in trange(step, max_iter):
 
-                # Get a random training batch. Notice that we are now going to
-                # forget about the `epoch` thing. Theoretically, they should do
-                # almost the same.
+                # Get a random training batch
                 ind_cur = np.random.choice(
                     len(x_tr), batch_size, replace=True)
                 x_b = np.array([x_tr[_i] for _i in ind_cur])
                 y_b = np.array([y_tr[_i] for _i in ind_cur])
 
-                # Write summary every N iterations as well as the first
-                # iteration. Use `self.config.report_freq`.
+                # Write summary every N iterations as well as the first iteration
                 K = self.config.report_freq
-                # records 0 % K or step=1
                 b_write_summary = step % K == 0 and step!=0 or step == 1
                 if b_write_summary:
                     fetches = {
@@ -408,8 +396,7 @@ class Network:
                    )
                    self.summary_tr.flush()
 
-                   # Also save current model to resume when we write the
-                   # summary.
+                   # Also save current model to resume when we write the summary.
                    self.saver_cur.save(
                        sess, self.save_file_cur,
                        global_step=self.global_step,
@@ -436,8 +423,7 @@ class Network:
                     )
                     self.summary_va.flush()
 
-                    # If best validation accuracy, update W_best, b_best, and
-                    # best accuracy. We will only return the best W and b
+                    # If best validation accuracy, update W_best, b_best, and best accuracy
                     if res["acc"] > best_acc:
                        best_acc = res["acc"]
                        # Write best acc to TF variable
@@ -550,7 +536,8 @@ def main(config):
     for row in data:
         speed_data = row['info']
         video = row.get('video')
-        if not video: continue # Video missing!?
+        if not video:
+            continue
         speed_data = downsample_json_to_video(video, speed_data)
 
         x.append(row['frame-10s'][:])
@@ -586,7 +573,6 @@ def main(config):
     assert len(y.shape) == 4, "Required Y is 4 tensor got %d." % len(y.shape)
 
     assert len(lstm_x.shape) == 5, "Required: X is 5 tensor got %d." % len(lstm_x.shape)
-    # assert len(speed_y.shape) == 4, "Required Y is 4 tensor got %d." % len(speed_y.shape)
 
     x_tr = x[:nrows//2]
     x_va = x[nrows//2:]
