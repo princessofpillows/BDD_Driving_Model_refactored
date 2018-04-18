@@ -9,7 +9,8 @@ The [Berkeley Deep Drive](https://github.com/gy20073/BDD_Driving_Model) neueral 
 * a working Python 3 development environment
 * [pip3](https://pip.pypa.io/en/latest/installing.html) to install Python dependencies (must be latest version -> pip install --upgrade pip)
 * [pipenv](https://github.com/pypa/pipenv) to manage dependencies
-* [Trained alexnet weights](http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/bvlc_alexnet.npy) for optimal accuracy
+* [driving dataset](https://drive.google.com/drive/folders/1z6hjT9JMrC2w30jyyxAbpbLgFEKpnsw2?usp=sharing)
+* [trained alexnet weights](http://www.cs.toronto.edu/~guerzhoy/tf_alexnet/bvlc_alexnet.npy) for optimal accuracy
 
 #### Pipfile Requirements
 
