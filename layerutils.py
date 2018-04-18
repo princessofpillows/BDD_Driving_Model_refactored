@@ -54,7 +54,6 @@ def convl(x, filter_height, filter_width, num_filters, stride_y, stride_x, name,
     bias = tf.reshape(tf.nn.bias_add(conv, biases), tf.shape(conv))
 
     # Apply relu function
-    # TODO: switch based on the config param ?
     relu = tf.nn.relu(bias, name=scope.name)
 
     return relu

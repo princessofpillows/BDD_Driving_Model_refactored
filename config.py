@@ -29,7 +29,7 @@ train_arg.add_argument("--data_dir", type=str,
                        help="Directory with train/test/val data")
 
 train_arg.add_argument("--weights_dir", type=str,
-                       default="C:/Users/austin/Developer/BDD_Driving_Model_refactored/bvlc_alexnet.npy",
+                       default="/home/jpatts/Desktop/BDD_Driving_Model_refactored/data/bvlc_alexnet.npy",
                        help="Directory with bvlc_alexnet.npy weights data. Specify file name.")
 
 train_arg.add_argument("--package_data", type=bool,
