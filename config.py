@@ -56,11 +56,11 @@ train_arg.add_argument("--save_dir", type=str,
                        help="Directory to save the best model")
 
 train_arg.add_argument("--val_freq", type=int,
-                       default=500,
+                       default=5,
                        help="Validation interval")
 
 train_arg.add_argument("--report_freq", type=int,
-                       default=50,
+                       default=5,
                        help="Summary interval")
 
 # ----------------------------------------

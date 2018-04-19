@@ -11,8 +11,6 @@ from tqdm import trange
 from config import get_config, print_usage
 from utils.preprocessing import package_data
 from layerutils import fcl, convl
-from tensorflow.contrib import rnn
-
 
 class Network:
     def __init__(self, x_shp, lstm_x_shp, config, speed_x_shp):
@@ -62,14 +60,19 @@ class Network:
 
         # Get shape for placeholder
         x_in_shp = (None, *self.x_shp[1:])
+        lstm_x_in_shp = (None, *self.lstm_x_shp[1:])
+        speed_x_shp = (None, *self.speed_x_shp[1:])
+        print("Shapes ", lstm_x_in_shp, speed_x_shp)
         # Create Placeholders for inputs
         self.seg_x = tf.placeholder(tf.float32, shape=x_in_shp, name="seg_x_in")
         self.seg_y = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="seg_y_in")
-        self.movement_values = tf.placeholder(tf.int64, shape=(), name="movement_values")
-        self.lstm_x = tf.placeholder(tf.float32, shape=self.lstm_x_shp, name="lstm_x_in")
-        self.lstm_y = tf.placeholder(tf.float32, shape=x_in_shp[:-1], name="lstm_y_in")
-        self.lstm_speed_x = tf.placeholder(tf.float32,  shape=self.speed_x_shp, name="lstm_speed")
-
+        
+        self.lstm_x = tf.placeholder(tf.float32, shape=lstm_x_in_shp, name="lstm_x_in")
+        self.lstm_y = tf.placeholder(tf.int64, shape=x_in_shp[:-1], name="lstm_y_in")
+        
+        self.lstm_speed_x = tf.placeholder(tf.float32, shape=speed_x_shp, name="lstm_speed_x")
+        self.lstm_speed_y = tf.placeholder(tf.int64, shape=speed_x_shp[0], name="lstm_speed_y")
+ 
     def _build_preprocessing(self):
         """Build preprocessing related graph."""
 
@@ -109,14 +112,21 @@ class Network:
 
         with tf.variable_scope("Eval", tf.AUTO_REUSE):
 
-            # Compute the accuracy of the model.
-            self.pred = tf.argmax(self.logits, axis=3) # Argmax per pixel
-            self.acc = tf.reduce_mean( 
-                tf.to_float(tf.equal(self.pred, self.seg_y))
+            # Compute the accuracy of the Segmentation.
+            self.seg_pred = tf.argmax(self.seg_logits, axis=3) # Argmax per pixel
+            self.seg_acc = tf.reduce_mean( 
+                tf.to_float(tf.equal(self.seg_pred, self.seg_y))
             )
 
-            # Record summary for accuracy
-            tf.summary.scalar("accuracy", self.acc)
+            # TODO: accuracy for LSTM
+            self.lstm_pred = tf.argmax(self.lstm_out, axis=1)
+            self.lstm_acc = tf.reduce_mean( 
+                tf.to_float(tf.equal(self.lstm_pred, self.lstm_speed_y))
+            )
+            
+            # Record summary for accuracies
+            tf.summary.scalar("seg_accuracy", self.seg_acc)
+            tf.summary.scalar("lstm_accuracy", self.lstm_acc)
 
             # save best validation accuracy
             self.best_va_acc_in = tf.placeholder(tf.float32, shape=())
@@ -218,44 +228,54 @@ class Network:
         with tf.variable_scope("Network", reuse=tf.AUTO_REUSE):
             # Normalize using the above training-time statistics
             yshps = [x.value for x in self.seg_y.get_shape()]
+            lstm_x_shps = [x.value for x in self.lstm_x.get_shape()]
 
-            alex_in = tf.reshape(self.lstm_x, ((self.lstm_x_shp[0]*self.lstm_x_shp[1]), self.lstm_x_shp[2], self.lstm_x_shp[3], self.lstm_x_shp[4]))
-            cur_in_lstm = self.alexNet(alex_in)
+            alex_in = tf.reshape(self.lstm_x, (
+                -1, self.lstm_x_shp[2], self.lstm_x_shp[3], self.lstm_x_shp[4])
+            )
+            print("Alex_in shape..", alex_in.shape)
+ 
+            # reshape Segmentation output to N classes final dim
             cur_in_seg = self.alexNet(self.seg_x)
-            print("Shape After alexnet..")
-            print(cur_in_lstm.shape)
-            # reshape Alex net output
-            
-            self.preds = tf.contrib.layers.conv2d(cur_in_seg, self.config.num_class, [1, 1],
+            classwise_seg_preds = tf.contrib.layers.conv2d(cur_in_seg, self.config.num_class, [1, 1],
                                    activation_fn=None,
                                    padding="VALID",
                                    biases_initializer=None)
 
-
             # Upscale logits to NWHC using nearest neighbor interpolation
             # turns (?,?,?, num_class) back to class scores for each pixel
-            self.logits = tf.image.resize_images(
-                images=self.preds,
+            # approximates deconvolution layer
+            self.seg_logits = tf.image.resize_images(
+                images=classwise_seg_preds,
                 size=[yshps[1], yshps[2]], 
                 method=tf.image.ResizeMethod.NEAREST_NEIGHBOR
             )
             
-            print("Shape After Reshape..", self.logits.shape)
+            print("Shape After Seg Reshape..", self.seg_logits.shape)
 
-            # LSTM part
-
-            lstm_in_AlexNet = tf.reshape(cur_in_lstm, (self.lstm_x_shp[0], self.lstm_x_shp[1], -1))
-            print("LSTM input from AlexNet shape: ", lstm_in_AlexNet.shape)
+            #### #### LSTM #### ####
+            lstm_x_shps = [x.value for x in self.lstm_x.get_shape()]
+            cur_in_lstm = self.alexNet(alex_in)
+            # cur_in_lstm = tf.contrib.layers.conv2d(cur_in_lstm, 2, [1, 1],
+            #                        activation_fn=None,
+            #                        padding="VALID",
+            #                        biases_initializer=None)
+            
+            # cur_in_lstm = tf.contrib.layers.max_pool2d(cur_in_lstm, [4, 4], 3, padding='VALID')
+            cur_in_lstm = tf.reshape(cur_in_lstm, [tf.shape(self.lstm_speed_y)[0], lstm_x_shps[1], -1])
 
             # put speed data together
             # lstm input should be (N, T, D) shape
-            lstm_in_alex_and_movements = tf.concat([lstm_in_AlexNet, self.lstm_speed_x], axis=-1)
+            lstm_in_alex_and_movements = tf.concat([cur_in_lstm, self.lstm_speed_x], axis=-1)
 
-            #lstm_out = self.LSTM([lstm_in_alex_and_movements])
-            lstm_out2= tf.keras.layers.LSTM(lstm_in_alex_and_movements)
-            lstm_out3= tf.keras.layers.LSTM(lstm_out2)
-            print("LSTM output shape: ", lstm_out3)
+            lstm_in_alex_and_movements = tf.reshape(lstm_in_alex_and_movements, 
+                (-1, lstm_x_shps[1], 2))
 
+            lstm_out2 = tf.keras.layers.LSTM(64)(lstm_in_alex_and_movements)
+            
+            # hidden_out = tf.keras.layers.Reshape(lstm_out3,
+                                                #  (self.lstm_x_shp[0] * self.lstm_x_shp[1], -1))
+            self.lstm_out = tf.layers.Dense(4)(lstm_out2)
             self.kernels_list = [
                 _v for _v in tf.trainable_variables() if "kernel" in _v.name]         
                 
@@ -278,45 +298,55 @@ class Network:
         activ = tf.matmul(out[-1], weights) + biases
 
         return activ
-    
-    def train(self, x_tr, y_tr, x_va, y_va, vid_speeds):
+
+
+    def train(self, seg_data, lstm_data, speed_data):
         """Training function.
 
         Parameters
         ----------
-        x_tr : ndarray
+        seg_data : tuple of ndarray
             Training data.
-
-        y_tr : ndarray
             Training labels.
-
-        x_va : ndarray
             Validation data.
-
-        y_va : ndarray
             Validation labels.
 
+        lstm_data : tuple of ndarray
+            Training data.
+            Training labels.
+            Validation data.
+            Validation labels.
+
+        speed_data : tuple ndarray
+            Training data.
+            Training labels.
+            Validation data.
+            Validation labels.
         """
+
+        # Unpack
+        seg_x, seg_y, seg_x_va, seg_y_va = seg_data
+        lstm_x, lstm_y, lstm_x_va, lstm_y_va = lstm_data
+        speed_x, speed_y, speed_x_va, speed_y_va = speed_data
 
         # ----------------------------------------
         # Preprocess data
-        x_tr_mean = x_tr.mean()
+        x_tr_mean = seg_x.mean()
         x_tr_range = 128.0
 
         # Report data statistic
         print("Training data before: mean {}, std {}, min {}, max {}".format(
-            x_tr_mean, x_tr.std(), x_tr.min(), x_tr.max()
+            x_tr_mean, seg_x.std(), seg_x.min(), seg_x.max()
         ))
 
-        # Unpack video, speeds
-        videos, speeds = zip(*vid_speeds) # Shapes: (NFWHC, NFD) F = frames
-        videos, speeds = np.asarray(videos), np.asarray(speeds)
 
+        
         # ----------------------------------------
         # Run TensorFlow Session
         with tf.Session() as sess:
             
             self._load_initial_weights(sess)
+            tf.keras.backend.set_session(sess)
             # Init
             print("Initializing...")
             sess.run(tf.global_variables_initializer())
@@ -358,9 +388,13 @@ class Network:
 
                 # Get a random training batch
                 ind_cur = np.random.choice(
-                    len(x_tr), batch_size, replace=True)
-                x_b = np.array([x_tr[_i] for _i in ind_cur])
-                y_b = np.array([y_tr[_i] for _i in ind_cur])
+                    len(seg_x), batch_size, replace=True)
+                seg_x_b = np.array([seg_x[_i] for _i in ind_cur])
+                seg_y_b = np.array([seg_y[_i] for _i in ind_cur])
+                lstm_x_b = np.array([lstm_x[_i] for _i in ind_cur])
+                lstm_y_b = np.array([lstm_y[_i] for _i in ind_cur])
+                speed_x_b =  np.array([speed_x[_i] for _i in ind_cur])
+                speed_y_b =  np.array([speed_y[_i] for _i in ind_cur])
 
                 # Write summary every N iterations as well as the first iteration
                 K = self.config.report_freq
@@ -372,23 +406,25 @@ class Network:
                         "global_step": self.global_step,
                     }
                 else:
-                 fetches = {
+                    fetches = {
                         "optim": self.optim,
-                        "summary": self.summary_op,
-                        "global_step": self.global_step,
                     }
 
                 # Run the operations necessary for training
                 res = sess.run(
                     fetches=fetches,
                     feed_dict={
-                        self.seg_x: x_b,
-                        self.seg_y: y_b,
+                        self.seg_x: seg_x_b,
+                        self.seg_y: seg_y_b,
+                        self.lstm_x: lstm_x_b,
+                        self.lstm_y: lstm_y_b,
+                        self.lstm_speed_x: speed_x_b,
+                        self.lstm_speed_y: speed_y_b,
                     },
                 )
 
                # Write Training Summary if we fetched it (no meta graph)
-                if "summary" in res:
+                if "summary" in res: 
                    self.summary_tr.add_summary(
                        res["summary"], global_step=res["global_step"],
                    )
@@ -403,17 +439,21 @@ class Network:
 
                 # Validate every N iterations and at the first iteration.
                 V = self.config.val_freq
-                b_validate = step % V == 0 and step!=0 or step == 1
+                b_validate = step % V == 0 and step != 0 or step == 1
                 if b_validate:
                     res = sess.run(
                         fetches={
-                           "acc": self.acc,
+                           "acc": self.seg_acc,
                            "summary": self.summary_op,
                            "global_step": self.global_step,
                         },
                         feed_dict={
-                           self.seg_x: x_va,
-                           self.seg_y: y_va,
+                            self.seg_x: seg_x_va,
+                            self.seg_y: seg_y_va,
+                            self.lstm_x: lstm_x_va,
+                            self.lstm_y: lstm_y_va,
+                            self.lstm_speed_x: speed_x_va,
+                            self.lstm_speed_y: speed_y_va,
                         })
                     # Write Validation Summary
                     self.summary_va.add_summary(
@@ -452,7 +492,7 @@ class Network:
             # Test on the test data
             res = sess.run(
                 fetches={
-                    "acc": self.acc,
+                    "seg_acc": self.seg_acc,
                 },
                 feed_dict={
                     self.seg_x: x_te,
@@ -462,30 +502,49 @@ class Network:
 
             # Report (print) test result
             print("Test accuracy with the best model is {}".format(
-                res["acc"]))
+                res["seg_acc"]))
 
 
     def _build_loss(self):
         """Build our cross entropy loss."""
 
         with tf.variable_scope("Loss", reuse=tf.AUTO_REUSE):
-            pred_shape = [x.value for x in self.logits.get_shape()]
+            
+            pred_shape = [x.value for x in self.seg_logits.get_shape()]
             seg_shape = [x.value for x in self.seg_y.get_shape()]
 
-            preds = tf.reshape(self.logits, [-1, pred_shape[3]])
+            seg_preds = tf.reshape(self.seg_logits, [-1, pred_shape[3]])
             seg = tf.reshape(self.seg_y, [-1])
 
-            # Create cross entropy loss
+            # Create cross entropy loss for Segmentation
             self.loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=seg,
-                    logits=preds,
+                    logits=seg_preds,
             ))
+
+            # LSTM loss
+            lstm_pred_shape = [x.value for x in self.lstm_out.get_shape()]
+            lstm_out = tf.reshape(self.lstm_out, [-1, lstm_pred_shape[-1]])
+            lstm_act = self.lstm_speed_y
+            # lstm_act = tf.reshape(self.lstm_speed_y, [-1])
+
+            self.loss += tf.reduce_mean(
+                tf.nn.softmax_cross_entropy_with_logits(
+                    labels=lstm_act,
+                    logits=tf.cast(lstm_act, tf.float32),  # TODO: This is broken!
+                )
+                # tf.nn.softmax_cross_entropy_with_logits(
+                #     labels=lstm_act,
+                #     logits=lstm_out,
+                # )
+            )
 
             # Create l2 regularizer loss and add
             l2_loss = tf.add_n([
                 tf.nn.l2_loss(_v) for _v in tf.trainable_variables()]) # Note includes biases.
             self.loss += self.config.reg_lambda * l2_loss
+
 
             # Record summary for loss
             tf.summary.scalar("loss", self.loss)
@@ -535,24 +594,21 @@ def main(config):
 
     # iterate through videos
     for row in data:
-        video = row['video']
+        video = row.get('video')
+        if not video: continue
         vector = row['info']
+        assert video.shape[0] == vector.shape[0] 
 
-        x.append(row['frame-10s'][:])
+        x.append(row['frame-10s'][:]) # Segmentation x, y
         y.append(row['class_id'][:])
 
-        batch = []
         # current frame is the 30th so we want to also consider several previous ones
-        # this is because the original project uses ffmpeg to get the 10s frame, which means its likely interpolated
-        batch.append(video[29])
-        batch.append(video[28])
+        batch = [video[29], video[28]]
         lstm_x.append(batch)
         lstm_y.append(row['frame-10s'][:])
 
         # motion data for lstm
-        speed_batch = []
-        speed_batch.append(vector[29])
-        speed_batch.append(vector[28])
+        speed_batch = [vector[29], vector[28]]
         speed_x.append(speed_batch)
         speed_y.append(vector[30])
 
@@ -571,49 +627,53 @@ def main(config):
     
     assert len(x.shape) == 4, "Required: X is 4 tensor got %d." % len(x.shape)
     assert len(y.shape) == 4, "Required Y is 4 tensor got %d." % len(y.shape)
-
     assert len(lstm_x.shape) == 5, "Required: X is 5 tensor got %d." % len(lstm_x.shape)
 
-    # 70% train, 20% val, 10% test split
-    train_split = int(num_videos * 0.7)
-    val_split = int(num_videos * 0.2) + train_split
 
-    x_tr = x[:train_split]
-    x_va = x[train_split:val_split]
-    x_te = x[val_split:]
-
-    lstm_x_tr = lstm_x[:train_split]
-    lstm_x_va = lstm_x[train_split:val_split]
-    lstm_x_te = lstm_x[val_split:]
-
-    lstm_y_tr = lstm_y[:train_split]
-    lstm_y_va = lstm_y[train_split:val_split]
-    lstm_y_te = lstm_y[val_split:]
-
-    y_tr = y[:train_split]
-    y_va = y[train_split:val_split]
-    y_te = y[val_split:]
-   
-    # Each label is pixel of [class_id, class_id, class_id]
-    y_tr_labels = y_tr[:, :, :, 0]
-    y_va_labels = y_va[:, :, :, 0]
-    y_te_labels = y_te[:, :, :, 0]
-
-    speed_x_tr = speed_x[:train_split]
-    speed_x_va = speed_x[train_split:val_split]
-    speed_x_te = speed_x[val_split:]
-
-    speed_y_tr = speed_y[:train_split]
-    speed_y_va = speed_y[train_split:val_split]
-    speed_y_te = speed_y[val_split:]
+    # Each label is pixel of [class_id, class_id, class_id], convert to single value
+    y = y[:, :, :, 0]
+    lstm_y = lstm_y[:, :, :, 0]
     
+    def split(data):
+        # 70% train, 20% val, 10% test split
+        train_split = int(num_videos * 0.7)
+        val_split = int(num_videos * 0.2) + train_split
+        return data[:train_split], data[train_split:val_split], data[val_split:]
+    
+    # Seg data
+    x_tr, x_va, x_te = split(x)
+    y_tr, y_va, y_te = split(y)
+    
+    # LSTM Alexnet data
+    lstm_x_tr, lstm_x_va, lstm_x_te = split(lstm_x)
+    lstm_y_tr, lstm_y_va, lstm_y_te = split(lstm_y)
+    
+    # Motion data
+    speed_y = np.apply_along_axis(_course_speed_labeler, -1, speed_y)
+    speed_x_tr, speed_x_va, speed_x_te = split(speed_x)
+    speed_y_tr, speed_y_va, speed_y_te = split(speed_y)
+    
+    seg_data = x_tr, y_tr, x_va, y_va
+    lstm_data = lstm_x_tr, lstm_y_tr, lstm_x_va, lstm_y_va 
+    speed_data = speed_x_tr, speed_y_tr, speed_x_va, speed_y_va
+
     # build network
     net = Network(x_tr.shape, lstm_x_tr.shape, config, speed_x_tr.shape)
     # train on train/val data
-    net.train(x_tr, y_tr_labels, x_va, y_va_labels, speed_x_tr)
+    net.train(seg_data, lstm_data, speed_data)
+    
     # test on test data
-    net.test(x_te, y_te_labels)
+    # net.test(x_te, y_te_labels)
 
+def _course_speed_labeler(speed):
+    if speed[0] < 1:
+        return 1
+    if abs(speed[1]) < 6:
+        return 2
+    if speed[1] < 0:
+        return 3
+    else:
+        return 4
 
 if __name__ == "__main__":
 
