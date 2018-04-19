@@ -10,6 +10,7 @@ from tqdm import trange
 
 from config import get_config, print_usage
 from utils.preprocessing import package_data
+from utils.segmentation import segmentation_color
 from layerutils import fcl, convl
 
 class Network:
@@ -114,6 +115,8 @@ class Network:
 
             # Compute the accuracy of the Segmentation.
             self.seg_pred = tf.argmax(self.seg_logits, axis=3) # Argmax per pixel
+            self.segmentation_frame = tf.py_func(segmentation_color, [self.seg_pred], [tf.uint8])[0]
+            tf.summary.image('segmentation!', self.segmentation_frame)
             self.seg_acc = tf.reduce_mean( 
                 tf.to_float(tf.equal(self.seg_pred, self.seg_y))
             )
