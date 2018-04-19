@@ -133,7 +133,7 @@ def package_data(data_dir):
     h5f.close()
 
 
-def _resize(image, dims=(640, 360, 3)):
+def _resize(image, dims=(244, 244, 3)):
     """Resize image to dims, preserve range (keep data from [0-255])"""
     return resize(image, dims, preserve_range=True)
     

@@ -55,12 +55,13 @@ train_arg.add_argument("--save_dir", type=str,
                        default="./save",
                        help="Directory to save the best model")
 
+# broken, so set to above number of training iterations
 train_arg.add_argument("--val_freq", type=int,
-                       default=500,
+                       default=999999,
                        help="Validation interval")
 
 train_arg.add_argument("--report_freq", type=int,
-                       default=50,
+                       default=20,
                        help="Summary interval")
 
 # ----------------------------------------

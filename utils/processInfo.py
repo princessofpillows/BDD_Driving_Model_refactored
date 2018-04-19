@@ -84,8 +84,7 @@ def read_json(filename, num_frames, hz):
             frame_velocity[frame, :] = r1 * velocity[t_prev, :] + r2 * velocity[t_next, :]
 
     # align with framerate (3hz)
-    frame_velocity = frame_velocity[::3, :]
-
+    frame_velocity = frame_velocity[::10, :]
     return frame_velocity
 
 
