@@ -537,7 +537,7 @@ class Network:
                     labels=lstm_act,
                     logits=tf.cast(lstm_act, tf.float32),  # TODO: This is broken!
                 )
-                # tf.nn.softmax_cross_entropy_with_logits(
+                # tf.nn.sparse_softmax_cross_entropy_with_logits(
                 #     labels=lstm_act,
                 #     logits=lstm_out,
                 # )
