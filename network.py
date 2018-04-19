@@ -142,19 +142,23 @@ class Network:
             with tf.variable_scope("Network", reuse=True):
 
                 with tf.variable_scope(op_name, reuse=True):
-    
-                    # Assign weights/biases to their corresponding tf variable
                     try:
                         weights, biases = weights_dict[op_name]
 
-                    except:
-                        # Biases
-                        var = tf.get_variable('biases', trainable=False)
-                        sess.run(var.assign(biases))
-
-                        # Weights
+                        # Load Weights
+                        if op_name == 'fc6':
+                            weights = tf.reshape(weights, (6, 6, 256, 4096))
+                        elif op_name == 'fc7':
+                            weights = tf.reshape(weights, (1, 1, 4096, 4096))
                         var = tf.get_variable('weights', trainable=False)
                         sess.run(var.assign(weights))
+
+                        # Load Biases
+                        var = tf.get_variable('biases', trainable=False)
+                        sess.run(var.assign(biases))
+                        print("Loading: ", op_name)
+                    except:
+                        pass
                             
         print("Weights loaded.")
 
@@ -165,7 +169,6 @@ class Network:
         '''
 
         print("Building Alexnet into the network...")
-        # reshape input for alexnet
         print("Shape of data going into AlexNet: ", x_in.shape)
         
         # Normalize using the above training-time statistics
@@ -191,6 +194,7 @@ class Network:
         
         cur_in = tf.contrib.layers.dropout(cur_in,
                                     0.3, is_training=True)
+
         # Fully connected layers with conv
         cur_in = convl(cur_in, 6, 6, 4096, 1, 1,  padding='VALID', name='fc6')
 
@@ -274,7 +278,7 @@ class Network:
         activ = tf.matmul(out[-1], weights) + biases
 
         return activ
-
+    
     def train(self, x_tr, y_tr, x_va, y_va, vid_speeds):
         """Training function.
 
@@ -307,7 +311,7 @@ class Network:
         # Unpack video, speeds
         videos, speeds = zip(*vid_speeds) # Shapes: (NFWHC, NFD) F = frames
         videos, speeds = np.asarray(videos), np.asarray(speeds)
-        
+
         # ----------------------------------------
         # Run TensorFlow Session
         with tf.Session() as sess:
